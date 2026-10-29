@@ -1,8 +1,8 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lineage</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: a lineage ladder (the result on top, origins at the bottom) beside an inspector for the selected step. */
 :root {
@@ -10,9 +10,9 @@
   --accent: #2348b8; --accent-soft: #e3e9fb;
   --ok: #1d7a4c; --ok-soft: #e1f2e9; --warn: #9a5c00; --warn-soft: #fbefd9; --err: #b42318; --err-soft: #fde5e2;
   --bound: #6f7b89;
-  --display: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;
-  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0e1319; --surface: #161d25; --sunk: #1c2530; --ink: #e5eaf0; --muted: #96a2af; --line: #2a3541;

@@ -166,7 +166,7 @@ def environment() -> dict[str, Any]:
         "host": socket.gethostname(),
         "python": platform.python_version(),
         "platform": f"{platform.system()}-{platform.machine()}",
-        "executable": sys.executable,
+        "executable": os.path.abspath(sys.executable),
         "variables": {k: os.environ[k] for k in SAFE_VARIABLES if k in os.environ},
         "packages": _package_versions(),
     }

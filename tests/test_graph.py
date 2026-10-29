@@ -173,3 +173,41 @@ def test_a_failure_is_reported_once_at_the_innermost_step(workdir: Path) -> None
         inner()
     graph = graphs.build(graphs.load(workdir))
     assert codes(graph) == {"failed": ["inner"]}
+
+
+def test_a_failed_step_is_not_also_missing_its_outputs(workdir: Path) -> None:
+    @chronex.step
+    def broken(target: Out[Path]) -> None:
+        raise RuntimeError("before writing")
+
+    with contextlib.suppress(RuntimeError):
+        broken(Path("out/never.txt"))
+
+    @chronex.step
+    def lazy(target: Out[Path]) -> None:
+        pass
+
+    lazy(Path("out/never.txt"))
+    graph = graphs.build(graphs.load(workdir))
+    assert codes(graph) == {"missing-output": ["lazy"], "failed": ["broken"]}
+    (text,) = [f.text for _, f in graph.all_flags() if f.code == "missing-output"]
+    assert text == "declared output out/never.txt was not written"
+
+
+def test_flag_times_say_they_are_utc(workdir: Path) -> None:
+    make(Path("a"), "v1")
+    use(Path("a"), Path("b1"))
+    make(Path("a"), "v2")
+    graph = graphs.build(graphs.load(workdir))
+    (text,) = [f.text for _, f in graph.all_flags() if f.code == "superseded-input"]
+    assert text.count(" UTC") == 2
+
+
+def test_report_creates_its_directory(workdir: Path) -> None:
+    from chronex.cli import main
+
+    make(Path("a"), "v1")
+    assert main(["report", "a", ".", "-o", "deep/er/report.html"]) == 0
+    html = Path("deep/er/report.html").read_text()
+    assert html.startswith("<!doctype html>")
+    assert "fonts.googleapis" not in html

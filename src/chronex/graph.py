@@ -288,8 +288,8 @@ def _check_record(
                     "warn",
                     "superseded-input",
                     f"{inp['rel']} is the version {producer['name']} wrote at "
-                    f"{producer['ended'][11:19]}; {newest['name']} rewrote "
-                    f"{os.path.basename(link.path or '')} at {newest['ended'][11:19]}",
+                    f"{producer['ended'][11:19]} UTC; {newest['name']} rewrote "
+                    f"{os.path.basename(link.path or '')} at {newest['ended'][11:19]} UTC",
                     [producer["id"], newest["id"]],
                 )
             )
@@ -317,8 +317,10 @@ def _check_record(
                 f"declared input {os.path.relpath(path, record['cwd'])} did not exist",
             )
         )
-    for path in record.get("missing_outputs", []):
-        flags.append(Flag("error", "missing-output", f"declared output {path} was not written"))
+    if record["status"] != "failed":  # a failed step's missing outputs are not news
+        for path in record.get("missing_outputs", []):
+            rel = os.path.relpath(path, record["cwd"])
+            flags.append(Flag("error", "missing-output", f"declared output {rel} was not written"))
     if record["observed"].get("workers"):
         flags.append(
             Flag(
