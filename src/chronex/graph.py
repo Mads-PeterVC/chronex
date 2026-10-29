@@ -250,6 +250,14 @@ def _check_record(
     flags = graph.flags[sid]
     if record["status"] == "failed":
         flags.append(Flag("warn", "failed", f"step failed: {record.get('error')}"))
+    elif record["status"] == "running":
+        flags.append(
+            Flag(
+                "warn",
+                "incomplete",
+                "no end recorded: still running, or killed (SIGKILL, out of memory, node failure)",
+            )
+        )
     for inp, link in zip(record["inputs"], graph.links[sid], strict=True):
         if not link.producer:
             continue

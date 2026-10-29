@@ -54,13 +54,19 @@ def run(
     children = [line for line in Path(records_file).read_text().splitlines() if line]
     os.unlink(records_file)
 
-    if returncode != 0:
-        for child in children:  # sys.exit(1) and kills are invisible from inside the process
-            record = json.loads(Path(child).read_text())
-            if record["status"] == "completed":
-                record["status"] = "failed"
-                record["error"] = f"exit code {returncode}"
-                Path(child).write_text(json.dumps(record, indent=1))
+    for child in children:  # sys.exit(1) and kills are invisible from inside the process
+        record = json.loads(Path(child).read_text())
+        if record["status"] == "running":
+            record["status"] = "failed"
+            record["error"] = (
+                f"the process ended without finishing the step (exit code {returncode})"
+            )
+        elif record["status"] == "completed" and returncode != 0:
+            record["status"] = "failed"
+            record["error"] = f"exit code {returncode}"
+        else:
+            continue
+        Path(child).write_text(json.dumps(record, indent=1))
 
     if children and not (inputs or outputs or watch):
         return returncode  # the Python processes recorded themselves

@@ -10,7 +10,14 @@ from chronex.record import Step
 
 
 class _ProcessStep(Step):
-    """A step whose name comes from ``sys.argv``, which is not set yet at interpreter start."""
+    """A step whose name comes from ``sys.argv``, which is not set yet at interpreter start.
+
+    It writes no start record, as its id is not final until then; ``chronex run`` records
+    a process that dies without finishing.
+    """
+
+    def _write_start(self) -> None:
+        pass
 
     def _write(self) -> Path:
         if sys.argv and sys.argv[0]:

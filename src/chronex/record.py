@@ -1,8 +1,10 @@
 """A step: one execution of some code, with what it read, wrote, ran and where.
 
-Each finished step is written as one JSON file to ``.chronex/`` in the directory the step ran
-in, so records travel with the outputs (rsync, ``hex remote pull``) and a tree of results can
-be indexed later without any server.
+Each step is written as one JSON file to ``.chronex/`` in the directory the step ran in, so
+records travel with the outputs (rsync, ``hex remote pull``) and a tree of results can be
+indexed later without any server. The file is written when the step starts, with status
+``running``, and rewritten when it ends; a record left ``running`` means the process died
+without finishing it. SIGTERM (a Slurm time limit) finishes open steps as failed first.
 """
 
 from __future__ import annotations
@@ -10,8 +12,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import signal
 import sys
+import threading
 import traceback
+import types
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +34,30 @@ _stack: list[Step] = []
 def current() -> Step | None:
     """The innermost active step, if any."""
     return _stack[-1] if _stack else None
+
+
+def _on_sigterm(signum: int, frame: types.FrameType | None) -> None:
+    """Finish every open step as killed, then die of SIGTERM as the process would have."""
+    for step in list(reversed(_stack)):
+        if step._open:
+            step.finish("killed: SIGTERM")
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _catch_sigterm() -> None:
+    """Install the SIGTERM handler, unless something else already handles SIGTERM."""
+    if threading.current_thread() is not threading.main_thread():
+        return
+    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+        signal.signal(signal.SIGTERM, _on_sigterm)
+
+
+def _release_sigterm() -> None:
+    if _stack or threading.current_thread() is not threading.main_thread():
+        return
+    if signal.getsignal(signal.SIGTERM) is _on_sigterm:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
 
 def _now() -> str:
@@ -99,6 +128,7 @@ class Step:
         self.started = _now()
         self.path: Path | None = None
         self._open = False
+        self._listed = False
 
     # -- declaring files -------------------------------------------------------------------
 
@@ -135,19 +165,25 @@ class Step:
             self.subprocesses.append(value)
 
     def start(self) -> Step:
+        self._write_start()
+        _catch_sigterm()
         _stack.append(self)
         audit.listen(self._listen)
         self._open = True
         return self
 
-    def finish(self, error: BaseException | None = None) -> Path:
+    def finish(self, error: BaseException | str | None = None) -> Path:
+        """End the step: completed, or failed with an exception or a message."""
         if not self._open:
             raise RuntimeError(f"step {self.name} is not running")
         self._open = False
         audit.unlisten(self._listen)
-        if _stack and _stack[-1] is self:
-            _stack.pop()
-        if error is not None:
+        if self in _stack:
+            _stack.remove(self)
+        _release_sigterm()
+        if isinstance(error, str):
+            self.status, self.error = "failed", error
+        elif error is not None:
             self.status = "failed"
             self.error = "".join(traceback.format_exception_only(type(error), error)).strip()
         elif self.status == "running":
@@ -204,45 +240,60 @@ class Step:
             "missing_outputs": [o["path"] for o in self.outputs if o["kind"] == "missing"],
         }
 
+    def _document(self, checks: dict[str, Any], ended: str | None) -> dict[str, Any]:
+        return {
+            "schema": SCHEMA,
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "function": self.function,
+            "auto": self.auto,
+            "parent": self.parent,
+            "status": self.status,
+            "error": self.error,
+            "started": self.started,
+            "ended": ended,
+            "cwd": self.cwd,
+            "argv": list(sys.argv),
+            "params": self.params,
+            "inputs": self.inputs,
+            "outputs": self.outputs,
+            "observed": {
+                "reads": list(self.reads),
+                "writes": list(self.writes),
+                "subprocesses": self.subprocesses,
+            },
+            **checks,
+            "code": code_identity(self.function_file),
+            "env": environment(),
+            "shephex": _shephex_identity(self.cwd),
+        }
+
+    def _save(self, record: dict[str, Any]) -> Path:
+        directory = Path(self.cwd) / RECORD_DIR
+        directory.mkdir(exist_ok=True)
+        self.path = directory / f"{self.id}.json"
+        self.path.write_text(json.dumps(record, indent=1))
+        sink = os.environ.get("CHRONEX_RECORD_LIST")
+        if sink and not self._listed:
+            self._listed = True
+            with open(sink, "a") as stream:
+                stream.write(f"{self.path}\n")
+        return self.path
+
+    def _write_start(self) -> None:
+        """Write the record as ``running``, so a process that dies still leaves it behind."""
+        with _guard.quiet():
+            checks: dict[str, Any] = {
+                "undeclared_reads": [],
+                "undeclared_writes": [],
+                "missing_outputs": [],
+            }
+            self._save(self._document(checks, ended=None))
+
     def _write(self) -> Path:
         with _guard.quiet():
-            checks = self._settle()
-            record = {
-                "schema": SCHEMA,
-                "id": self.id,
-                "name": self.name,
-                "kind": self.kind,
-                "function": self.function,
-                "auto": self.auto,
-                "parent": self.parent,
-                "status": self.status,
-                "error": self.error,
-                "started": self.started,
-                "ended": _now(),
-                "cwd": self.cwd,
-                "argv": list(sys.argv),
-                "params": self.params,
-                "inputs": self.inputs,
-                "outputs": self.outputs,
-                "observed": {
-                    "reads": list(self.reads),
-                    "writes": list(self.writes),
-                    "subprocesses": self.subprocesses,
-                },
-                **checks,
-                "code": code_identity(self.function_file),
-                "env": environment(),
-                "shephex": _shephex_identity(self.cwd),
-            }
-            directory = Path(self.cwd) / RECORD_DIR
-            directory.mkdir(exist_ok=True)
-            self.path = directory / f"{self.id}.json"
-            self.path.write_text(json.dumps(record, indent=1))
-            sink = os.environ.get("CHRONEX_RECORD_LIST")
-            if sink:
-                with open(sink, "a") as stream:
-                    stream.write(f"{self.path}\n")
-        return self.path
+            return self._save(self._document(self._settle(), ended=_now()))
 
 
 def _shephex_identity(cwd: str) -> dict[str, Any] | None:
