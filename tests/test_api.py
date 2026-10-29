@@ -132,3 +132,16 @@ def test_large_arguments_are_summarised(workdir: Path) -> None:
     small = np.arange(3)
     total(small, [1, 2], Path("t"))
     assert {r["params"]["numbers"] == [1, 2] for r in records(workdir)} == {True, False}
+
+
+def test_a_parent_may_read_what_its_child_steps_wrote(workdir: Path) -> None:
+    @chronex.step
+    def shout(source: In[Path], target: Out[Path]) -> None:
+        target.write_text(source.read_text().upper())
+
+    Path("in.txt").write_text("hi")
+    with chronex.step("outer") as s:
+        shout(Path(s.input("in.txt")), Path("mid.txt"))
+        Path(s.output("final.txt")).write_text(Path("mid.txt").read_text() + "!")
+    found = {r["name"]: r for r in records(workdir)}
+    assert found["outer"]["undeclared_reads"] == []

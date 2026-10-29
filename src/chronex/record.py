@@ -170,6 +170,7 @@ class Step:
         self.writes: dict[str, None] = {}
         self._first_read: set[str] = set()  # read before the step wrote them
         self._overwritten: dict[str, dict[str, Any]] = {}  # identity when first rewritten
+        self._from_children: set[str] = set()  # files written by steps nested in this one
         self.subprocesses: list[str] = []
         self.workers = 0
         self.status = "running"
@@ -252,7 +253,12 @@ class Step:
             self.error = "".join(traceback.format_exception_only(type(error), error)).strip()
         elif self.status == "running":
             self.status = "completed"
-        return self._write()
+        path = self._write()
+        enclosing = current()
+        if enclosing is not None and enclosing.id == self.parent:
+            enclosing._from_children.update(o["path"] for o in self.outputs)
+            enclosing._from_children.update(self.writes)
+        return path
 
     def __enter__(self) -> Step:
         return self.start()
@@ -287,7 +293,9 @@ class Step:
         reads = [
             p
             for p in self.reads
-            if p in self._first_read and (p in self._overwritten or os.path.isfile(p))
+            if p in self._first_read
+            and p not in self._from_children
+            and (p in self._overwritten or os.path.isfile(p))
         ]
         undeclared_reads = [p for p in reads if not covered(p, declared_in)]
         if self.auto:
