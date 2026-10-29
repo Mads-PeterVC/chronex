@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -13,9 +14,34 @@ from chronex.runner import run
 COLORS = {"error": "\033[31m", "warn": "\033[33m", "info": "\033[2m"}
 
 
+def _outside(graph: graphs.Graph, steps: set[str], roots: list[str]) -> int:
+    """Origin inputs of these steps that lie outside the searched directories."""
+    bases = [os.path.join(os.path.realpath(r), "") for r in roots]
+    return sum(
+        1
+        for sid in steps
+        for inp, link in zip(graph.records[sid]["inputs"], graph.links[sid], strict=True)
+        if link.origin and not os.path.realpath(inp["path"]).startswith(tuple(bases))
+    )
+
+
 def _check(args: argparse.Namespace) -> int:
     graph = graphs.build(graphs.load(*args.roots))
-    found = [(sid, f) for sid, f in graph.all_flags() if f.level != "info" or args.all]
+    if args.target:
+        scope: set[str] = set()
+        for target in args.target:
+            lineage = graph.lineage(target)
+            if not lineage:
+                print(f"chronex check: {_unknown(graph, target)}", file=sys.stderr)
+                return 2
+            scope |= lineage
+    elif args.history:
+        scope = set(graph.records)
+    else:
+        scope = graph.current()
+    found = [
+        (sid, f) for sid, f in graph.all_flags() if sid in scope and (f.level != "info" or args.all)
+    ]
     if args.json:
         print(json.dumps([{"step": sid, **f.to_dict()} for sid, f in found], indent=1))
     else:
@@ -25,11 +51,29 @@ def _check(args: argparse.Namespace) -> int:
             label = f"{flag.level:5} {flag.code:22} {record['name']:10} {sid[-8:]}"
             prefix, reset = (COLORS[flag.level], "\033[0m") if color else ("", "")
             print(f"{prefix}{label}{reset}  {flag.text}")
-        steps = len(graph.records)
-        links = sum(1 for v in graph.links.values() for link in v if link.producer)
-        origins = sum(1 for v in graph.links.values() for link in v if link.origin)
-        print(f"{steps} steps, {links} linked inputs, {origins} origin inputs, {len(found)} flags")
-    return 1 if any(f.level == "error" for _, f in found) else 0
+        links = sum(1 for sid in scope for link in graph.links[sid] if link.producer)
+        origins = sum(1 for sid in scope for link in graph.links[sid] if link.origin)
+        hidden = len(graph.records) - len(scope)
+        summary = f"{len(scope)} steps, {links} linked inputs, {origins} origin inputs"
+        if hidden and not args.target:
+            summary += f" ({hidden} not current, --history to show)"
+        print(f"{summary}, {len(found)} flags")
+        outside = _outside(graph, scope, args.roots)
+        if outside:
+            inputs = "input" if outside == 1 else "inputs"
+            print(
+                f"{outside} origin {inputs} outside the searched directories: "
+                "their producers' records may be elsewhere"
+            )
+    failing = ("error", "warn") if args.strict else ("error",)
+    return 1 if any(f.level in failing for _, f in found) else 0
+
+
+def _unknown(graph: graphs.Graph, path: str) -> str:
+    """Why a file has no recorded producer."""
+    if not os.path.exists(path):
+        return f"{path} does not exist"
+    return f"no recorded step wrote the current content of {path}"
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -95,6 +139,12 @@ def _run(args: argparse.Namespace) -> int:
     )
 
 
+def _roots(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "roots", nargs="*", default=["."], help="directories to search for records (default: .)"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="chronex", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -110,20 +160,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("command", nargs=argparse.REMAINDER)
     p.set_defaults(func=_run)
 
-    p = sub.add_parser("check", help="link the records below ROOTS and report problems")
-    p.add_argument("roots", nargs="+")
+    p = sub.add_parser(
+        "check",
+        help="link the records below ROOTS and report problems",
+        description="Exit code: 1 if an error is found (or a warning, with --strict), else 0.",
+    )
+    _roots(p)
+    p.add_argument("--target", action="append", help="only the lineage of this file (repeatable)")
+    p.add_argument("--history", action="store_true", help="include steps redone by later runs")
+    p.add_argument("--strict", action="store_true", help="fail on warnings too")
     p.add_argument("--all", action="store_true", help="include info-level notes")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_check)
 
     p = sub.add_parser("show", help="print the upstream lineage of a file")
     p.add_argument("path")
-    p.add_argument("roots", nargs="+")
+    _roots(p)
     p.set_defaults(func=_show)
 
     p = sub.add_parser("report", help="write a self-contained HTML lineage page for a file")
     p.add_argument("target", help="the result to explain, e.g. a figure")
-    p.add_argument("roots", nargs="+")
+    _roots(p)
     p.add_argument("-o", "--output", default="lineage.html")
     p.add_argument("--title")
     p.set_defaults(func=_report)

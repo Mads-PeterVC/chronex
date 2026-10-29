@@ -57,7 +57,13 @@ def identify(path: str | os.PathLike[str]) -> dict[str, object]:
     """
     p = Path(path)
     if p.is_file():
-        return {"kind": "file", "sha": file_sha256(p), "size": p.stat().st_size}
+        stat = p.stat()
+        return {
+            "kind": "file",
+            "sha": file_sha256(p),
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        }
     if p.is_dir():
         sha, size, files = tree_sha256(p)
         entry: dict[str, object] = {"kind": "dir", "sha": sha, "size": size}

@@ -69,6 +69,42 @@ class Graph:
                     todo.append(link.producer)
         return seen
 
+    def current(self) -> set[str]:
+        """Steps that still matter: those not redone by a later run, and their ancestry.
+
+        A step is redone when every path it wrote (or declared and did not write) was written
+        again later on the same host. A step that wrote nothing is redone by a later run with
+        the same name, parameters and directory.
+        """
+        writes: dict[tuple[str, str], list[str]] = defaultdict(list)
+        runs: dict[tuple[Any, ...], list[str]] = defaultdict(list)
+        for r in self.records.values():
+            for out in r["outputs"]:
+                if out["sha"]:
+                    writes[_host(r), out["path"]].append(_end(r))
+            key = (r["name"], r["cwd"], _host(r), json.dumps(r["params"], sort_keys=True))
+            runs[key].append(_end(r))
+
+        def redone(r: Record) -> bool:
+            if r["outputs"]:
+                return all(
+                    any(t > _end(r) for t in writes[_host(r), out["path"]]) for out in r["outputs"]
+                )
+            key = (r["name"], r["cwd"], _host(r), json.dumps(r["params"], sort_keys=True))
+            return any(t > _end(r) for t in runs[key])
+
+        keep = {sid for sid, r in self.records.items() if not redone(r)}
+        for sid in list(keep):
+            keep |= self.ancestry(sid)
+        return keep
+
+    def lineage(self, path: str | os.PathLike[str]) -> set[str]:
+        """The steps that wrote the current content of a file, and their ancestry."""
+        found = set(self.producers_of(path))
+        for sid in list(found):
+            found |= self.ancestry(sid)
+        return found
+
     def producers_of(self, path: str | os.PathLike[str]) -> list[str]:
         """Steps that wrote the current content of a local file."""
         info = identify(path)
@@ -104,20 +140,34 @@ class Graph:
         }
 
 
+# Directories that never hold a step's records, and can be large.
+_SKIPPED_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".tox"}
+
+
 def load(*roots: str | os.PathLike[str]) -> list[Record]:
     """Every record below the given directories."""
     records = []
     for root in roots:
-        for path in sorted(Path(root).rglob(f"{RECORD_DIR}/*.json")):
-            record = json.loads(path.read_text())
-            if record.get("schema", "").startswith("chronex/"):
-                record["_file"] = str(path)
-                records.append(record)
+        for directory, subdirs, _ in os.walk(root):
+            subdirs[:] = sorted(d for d in subdirs if d not in _SKIPPED_DIRS)
+            if RECORD_DIR not in subdirs:
+                continue
+            subdirs.remove(RECORD_DIR)
+            for path in sorted(Path(directory, RECORD_DIR).glob("*.json")):
+                record = json.loads(path.read_text())
+                if record.get("schema", "").startswith("chronex/"):
+                    record["_file"] = str(path)
+                    records.append(record)
     return records
 
 
 def _host(record: Record) -> str:
     return str(record.get("env", {}).get("host", ""))
+
+
+def _end(record: Record) -> str:
+    """When a step ended, or started if it never recorded an end."""
+    return str(record["ended"] or record["started"])
 
 
 def _outputs(record: Record) -> list[tuple[str, str, str]]:
@@ -342,6 +392,8 @@ def _check_record(
     if _host(record) == socket.gethostname():
         for out in record["outputs"]:
             if out["sha"] and os.path.exists(out["path"]):
+                if _unchanged(out):
+                    continue
                 now = identify(out["path"])["sha"]
                 if now != out["sha"]:
                     flags.append(
@@ -351,6 +403,14 @@ def _check_record(
                             f"{out['rel']} has changed since this step wrote it",
                         )
                     )
+
+
+def _unchanged(out: dict[str, Any]) -> bool:
+    """Whether a file output still has the size and mtime it had when hashed (no re-hash)."""
+    if out["kind"] != "file" or "mtime_ns" not in out:
+        return False
+    stat = os.stat(out["path"])
+    return bool(stat.st_size == out["size"] and stat.st_mtime_ns == out["mtime_ns"])
 
 
 def _check_mixed(graph: Graph, writers: dict[tuple[str, str], list[tuple[Record, str]]]) -> None:
