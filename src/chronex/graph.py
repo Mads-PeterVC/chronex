@@ -3,6 +3,11 @@
 No step knows about any other. Steps are linked afterwards: an input is produced by the step
 that wrote a file with the same hash. Copies (collecting, staging, rsync) are therefore
 transparent, and the checks below look for the ways a chain of steps goes wrong.
+
+A producer must have finished before its consumer started, and one that wrote the very path
+read wins. Content found only at other paths links when it has a single original source;
+otherwise, or when it is too small to identify anything, the input is ambiguous: reported, but
+not part of the lineage.
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ from chronex.record import RECORD_DIR
 Record = dict[str, Any]
 
 LEVELS = ("error", "warn", "info")
+# Content smaller than this (empty files, "{}", "ok") is too common to link across paths.
+TRIVIAL_BYTES = 64
 
 
 @dataclass
@@ -41,6 +48,7 @@ class Link:
     producer: str | None  # id of the step that wrote this content, if any
     path: str | None  # where the producer wrote it
     origin: bool  # no step wrote this content or this path: it enters the graph here
+    ambiguous: list[str] = field(default_factory=list)  # steps that wrote this content elsewhere
 
 
 @dataclass
@@ -80,7 +88,15 @@ class Graph:
         return {
             "records": self.records,
             "links": {
-                k: [{"producer": lk.producer, "path": lk.path, "origin": lk.origin} for lk in v]
+                k: [
+                    {
+                        "producer": lk.producer,
+                        "path": lk.path,
+                        "origin": lk.origin,
+                        "ambiguous": lk.ambiguous,
+                    }
+                    for lk in v
+                ]
                 for k, v in self.links.items()
             },
             "flags": {k: [f.to_dict() for f in v] for k, v in self.flags.items()},
@@ -154,6 +170,16 @@ def build(records: list[Record]) -> Graph:
     return graph
 
 
+def _input_shas(record: Record) -> set[str]:
+    """Hashes a step read, including the files inside input directories."""
+    found = set()
+    for inp in record["inputs"]:
+        if inp["sha"]:
+            found.add(inp["sha"])
+        found.update((inp.get("files") or {}).values())
+    return found
+
+
 def _resolve(
     record: Record,
     inp: dict[str, Any],
@@ -161,26 +187,55 @@ def _resolve(
     writers: dict[tuple[str, str], list[tuple[Record, str]]],
     flags: dict[str, list[Flag]],
 ) -> Link:
-    sid, started, host = record["id"], record["started"], _host(record)
-    candidates = [(r, p) for r, p in produced.get(inp["sha"] or "", []) if r["id"] != sid]
-    if candidates:
-        # Prefer a producer that finished before this step started and wrote this very path,
-        # and among those the most recent.
-        def rank(item: tuple[Record, str]) -> tuple[bool, bool, str]:
-            r, p = item
-            return (r["ended"] <= started, _host(r) == host and p == inp["path"], r["ended"])
-
-        producer, path = max(candidates, key=rank)
+    sid, started, host, sha = record["id"], record["started"], _host(record), inp["sha"]
+    candidates = [
+        (r, p) for r, p in produced.get(sha or "", []) if r["id"] != sid and r["ended"] <= started
+    ]
+    same_path = [(r, p) for r, p in candidates if _host(r) == host and p == inp["path"]]
+    if same_path:
+        producer, path = max(same_path, key=lambda item: item[0]["ended"])
         return Link(producer=producer["id"], path=path, origin=False)
-    earlier = [(r, sha) for r, sha in writers.get((host, inp["path"]), []) if r["id"] != sid]
-    if earlier and inp["sha"]:
-        writer, sha = max(earlier, key=lambda item: item[0]["ended"])
+    if candidates:
+        # A step that read this content and wrote it again is a copy; copies of one original
+        # are one source, and the latest copy is the producer.
+        originals = {r["id"] for r, _ in candidates if sha not in _input_shas(r)}
+        trivial = (inp["size"] or 0) < TRIVIAL_BYTES
+        if len(originals) <= 1 and not trivial:
+            producer, path = max(candidates, key=lambda item: item[0]["ended"])
+            return Link(producer=producer["id"], path=path, origin=False)
+        ambiguous = sorted({r["id"] for r, _ in candidates})
+        names = ", ".join(sorted({r["name"] for r, _ in candidates}))
+        if trivial:
+            flag = Flag(
+                "info",
+                "ambiguous-input",
+                f"{inp['rel']} ({inp['size']} bytes) has the same content as an output of "
+                f"{names}, too little to link by content",
+                ambiguous,
+            )
+        else:
+            flag = Flag(
+                "warn",
+                "ambiguous-input",
+                f"{inp['rel']} has the same content as outputs of unrelated steps ({names}); "
+                "not linked to either",
+                ambiguous,
+            )
+        flags[sid].append(flag)
+        return Link(producer=None, path=None, origin=False, ambiguous=ambiguous)
+    earlier = [
+        (r, written)
+        for r, written in writers.get((host, inp["path"]), [])
+        if r["id"] != sid and r["ended"] <= started
+    ]
+    if earlier and sha:
+        writer, written = max(earlier, key=lambda item: item[0]["ended"])
         flags[sid].append(
             Flag(
                 "error",
                 "modified-after-write",
                 f"{inp['rel']} differs from what {writer['name']} wrote there "
-                f"({sha[:10]}… then, {inp['sha'][:10]}… when read): changed without a record",
+                f"({written[:10]}… then, {sha[:10]}… when read): changed without a record",
                 [writer["id"]],
             )
         )

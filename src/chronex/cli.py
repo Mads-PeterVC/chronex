@@ -59,6 +59,9 @@ def _show(args: argparse.Namespace) -> int:
                 if link.producer not in shown:
                     shown.add(link.producer)
                     show(link.producer, depth + 1)
+            elif link.ambiguous:
+                names = ", ".join(sorted({graph.records[a]["name"] for a in link.ambiguous}))
+                print(f"{'  ' * (depth + 1)}same content as: {names}: {inp['rel']}")
             else:
                 state = "origin" if link.origin else "UNMATCHED"
                 print(f"{'  ' * (depth + 1)}{state}: {inp['rel']} ({(inp['sha'] or '')[:10]})")

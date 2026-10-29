@@ -91,3 +91,61 @@ def test_directory_outputs_link_to_files_inside(workdir: Path) -> None:
     graph = graphs.build(graphs.load(workdir))
     (user,) = [r for r in graph.records.values() if r["name"] == "use"]
     assert graph.records[graph.links[user["id"]][0].producer]["name"] == "many"
+
+
+def link_of(graph: graphs.Graph, name: str) -> graphs.Link:
+    (record,) = [r for r in graph.records.values() if r["name"] == name]
+    (link,) = graph.links[record["id"]]
+    return link
+
+
+def test_a_producer_must_finish_before_the_consumer_starts(workdir: Path) -> None:
+    content = "the same bytes, long enough to count as real content " * 2
+    Path("x").write_text(content)
+    use(Path("x"), Path("y"))
+    make(Path("z"), content)
+    graph = graphs.build(graphs.load(workdir))
+    assert link_of(graph, "use").origin
+    assert codes(graph) == {}
+
+
+def test_a_later_write_to_an_input_path_is_not_a_modification(workdir: Path) -> None:
+    Path("cfg").write_text("v1")
+    use(Path("cfg"), Path("out"))
+    make(Path("cfg"), "v2")
+    graph = graphs.build(graphs.load(workdir))
+    assert codes(graph) == {}
+
+
+def test_unrelated_producers_of_the_same_content_are_ambiguous(workdir: Path) -> None:
+    content = "identical output from two unrelated steps, long enough to count " * 2
+    make(Path("a"), content)
+    make(Path("b"), content)
+    shutil.copyfile("a", "c")  # an unrecorded copy: either step could be the source
+    use(Path("c"), Path("d"))
+    graph = graphs.build(graphs.load(workdir))
+    link = link_of(graph, "use")
+    assert link.producer is None and not link.origin
+    assert len(link.ambiguous) == 2
+    assert codes(graph) == {"ambiguous-input": ["use"]}
+
+
+def test_copies_of_one_original_are_not_ambiguous(workdir: Path) -> None:
+    content = "one original, copied by a recorded step and then by hand, still links " * 2
+    make(Path("a"), content)
+    copy(Path("a"), Path("staged/a"))
+    shutil.copyfile("staged/a", "elsewhere")
+    use(Path("elsewhere"), Path("d"))
+    graph = graphs.build(graphs.load(workdir))
+    assert graph.records[link_of(graph, "use").producer]["name"] == "copy"
+
+
+def test_trivial_content_does_not_link_across_paths(workdir: Path) -> None:
+    make(Path("a"), "")
+    shutil.copyfile("a", "c")
+    use(Path("c"), Path("d"))
+    graph = graphs.build(graphs.load(workdir))
+    link = link_of(graph, "use")
+    assert link.producer is None and link.ambiguous
+    flags = [f for sid, f in graph.all_flags() if f.code == "ambiguous-input"]
+    assert [f.level for f in flags] == ["info"]
