@@ -91,3 +91,26 @@ def test_nested_steps_record_their_parent(workdir: Path) -> None:
         Path("f").write_text("x")
     found = {r["name"]: r for r in records(workdir)}
     assert found["inner"]["parent"] == outer.id
+
+
+def test_a_coroutine_is_recorded_while_it_runs(workdir: Path) -> None:
+    import asyncio
+
+    @chronex.step
+    async def write(target: Out[Path]) -> int:
+        await asyncio.sleep(0)
+        target.write_text("async")
+        return 1
+
+    assert asyncio.run(write(Path("a.txt"))) == 1
+    (record,) = records(workdir)
+    assert record["status"] == "completed"
+    assert record["missing_outputs"] == []
+
+
+def test_a_generator_cannot_be_a_step() -> None:
+    def numbers(target: Out[Path]):  # type: ignore[no-untyped-def]
+        yield 1
+
+    with pytest.raises(TypeError, match="block"):
+        chronex.step(numbers)

@@ -77,13 +77,17 @@ def _roles(function: Callable[..., Any]) -> dict[str, _Role]:
 
 
 def _decorate(function: Callable[P, R], name: str) -> Callable[P, R]:
+    if inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function):
+        raise TypeError(
+            f"{function.__qualname__} is a generator, which runs after the call returns; record "
+            f"the loop that consumes it with a block instead: with chronex.step({name!r}): ..."
+        )
     signature = inspect.signature(function)
     roles = _roles(function)
     source = inspect.getsourcefile(function)
     qualified = f"{function.__module__}:{function.__qualname__}"
 
-    @functools.wraps(function)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+    def begin(*args: Any, **kwargs: Any) -> Step:
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
         params = {k: v for k, v in bound.arguments.items() if k not in roles}
@@ -91,7 +95,26 @@ def _decorate(function: Callable[P, R], name: str) -> Callable[P, R]:
         for param, role in roles.items():
             for path in _paths(bound.arguments[param]):
                 (step.input if role is IN else step.output)(path, param)
-        step.start()
+        return step.start()
+
+    if inspect.iscoroutinefunction(function):
+
+        @functools.wraps(function)
+        async def coroutine(*args: Any, **kwargs: Any) -> Any:
+            step = begin(*args, **kwargs)
+            try:
+                result = await function(*args, **kwargs)
+            except BaseException as error:
+                step.finish(error)
+                raise
+            step.finish()
+            return result
+
+        return coroutine  # type: ignore[return-value]
+
+    @functools.wraps(function)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        step = begin(*args, **kwargs)
         try:
             result = function(*args, **kwargs)
         except BaseException as error:
