@@ -105,6 +105,32 @@ class Graph:
             found |= self.ancestry(sid)
         return found
 
+    def why_unknown(self, path: str | os.PathLike[str]) -> str:
+        """Why no recorded step wrote the current content of a file."""
+        absolute = os.path.abspath(path)
+        if not os.path.exists(absolute):
+            return f"{path} does not exist"
+        host = socket.gethostname()
+        wrote = [
+            r
+            for r in self.records.values()
+            if _host(r) == host and any(o["path"] == absolute for o in r["outputs"])
+        ]
+        if wrote:
+            last = max(wrote, key=_end)
+            when = _end(last)[:19].replace("T", " ")
+            return f"{path} was written by {last['name']} at {when} UTC, but has changed since"
+        readers = sorted(
+            {
+                r["name"]
+                for r in self.records.values()
+                if _host(r) == host and any(i["path"] == absolute for i in r["inputs"])
+            }
+        )
+        if readers:
+            return f"no recorded step wrote {path}; it is an origin input of {', '.join(readers)}"
+        return f"no recorded step wrote or read {path}"
+
     def producers_of(self, path: str | os.PathLike[str]) -> list[str]:
         """Steps that wrote the current content of a local file."""
         info = identify(path)

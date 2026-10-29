@@ -97,3 +97,34 @@ def test_records_are_found_without_walking_virtualenvs(workdir: Path) -> None:
     (workdir / ".venv" / "lib" / ".chronex" / "x.json").write_text("not json")
     make(Path("a"), "v1")
     assert len(graphs.load(workdir)) == 1
+
+
+def show(path: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
+    code = main(["show", path])
+    return code, capsys.readouterr().out
+
+
+def test_show_names_the_files_on_each_step(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make(Path("a"), "v1")
+    use(Path("a"), Path("b"))
+    code, out = show("b", capsys)
+    assert code == 0
+    assert out.splitlines() == ["use [completed]  a → b", "  make [completed] value=v1  → a"]
+
+
+def test_show_explains_why_a_file_has_no_lineage(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Path("raw").write_text("measured")
+    use(Path("raw"), Path("b"))
+    make(Path("c"), "v1")
+    Path("c").write_text("edited")
+    Path("loose").write_text("x")
+    assert show("nope", capsys) == (1, "nope does not exist\n")
+    assert show("raw", capsys) == (1, "no recorded step wrote raw; it is an origin input of use\n")
+    code, out = show("c", capsys)
+    assert code == 1 and out.startswith("c was written by make at ")
+    assert out.endswith("UTC, but has changed since\n")
+    assert show("loose", capsys) == (1, "no recorded step wrote or read loose\n")

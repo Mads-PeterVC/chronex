@@ -32,7 +32,7 @@ def _check(args: argparse.Namespace) -> int:
         for target in args.target:
             lineage = graph.lineage(target)
             if not lineage:
-                print(f"chronex check: {_unknown(graph, target)}", file=sys.stderr)
+                print(f"chronex check: {graph.why_unknown(target)}", file=sys.stderr)
                 return 2
             scope |= lineage
     elif args.history:
@@ -69,11 +69,10 @@ def _check(args: argparse.Namespace) -> int:
     return 1 if any(f.level in failing for _, f in found) else 0
 
 
-def _unknown(graph: graphs.Graph, path: str) -> str:
-    """Why a file has no recorded producer."""
-    if not os.path.exists(path):
-        return f"{path} does not exist"
-    return f"no recorded step wrote the current content of {path}"
+def _files(paths: list[str], limit: int = 2) -> str:
+    shown = [os.path.relpath(p) for p in paths[:limit]]
+    more = f" and {len(paths) - limit} more" if len(paths) > limit else ""
+    return ", ".join(shown) + more
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -81,7 +80,7 @@ def _show(args: argparse.Namespace) -> int:
     graph = graphs.build(graphs.load(*args.roots))
     producers = graph.producers_of(args.path)
     if not producers:
-        print(f"no recorded step wrote the current content of {args.path}")
+        print(graph.why_unknown(args.path))
         return 1
     seen: set[str] = set()
 
@@ -89,26 +88,31 @@ def _show(args: argparse.Namespace) -> int:
         record = graph.records[sid]
         flags = ", ".join(f.code for f in graph.flags.get(sid, []) if f.level != "info")
         params = " ".join(f"{k}={v}" for k, v in record["params"].items() if k != "argv")
+        files = (
+            f"{_files([i['path'] for i in record['inputs']])} → "
+            f"{_files([o['path'] for o in record['outputs']])}"
+        ).strip()
         mark = " (see above)" if sid in seen else ""
-        print(
-            f"{'  ' * depth}{record['name']} [{record['status']}] {params}{mark}"
-            + (f"  ⚑ {flags}" if flags else "")
-        )
+        head = " ".join(part for part in (record["name"], f"[{record['status']}]", params) if part)
+        print(f"{'  ' * depth}{head}  {files}{mark}" + (f"  ⚑ {flags}" if flags else ""))
         if sid in seen:
             return
         seen.add(sid)
         shown: set[str] = set()
+        indent = "  " * (depth + 1)
         for inp, link in zip(record["inputs"], graph.links[sid], strict=True):
+            path = os.path.relpath(inp["path"])
             if link.producer:
                 if link.producer not in shown:
                     shown.add(link.producer)
                     show(link.producer, depth + 1)
             elif link.ambiguous:
                 names = ", ".join(sorted({graph.records[a]["name"] for a in link.ambiguous}))
-                print(f"{'  ' * (depth + 1)}same content as: {names}: {inp['rel']}")
+                print(f"{indent}same content as an output of {names}: {path}")
+            elif link.origin:
+                print(f"{indent}origin: {path} ({(inp['sha'] or 'missing')[:10]})")
             else:
-                state = "origin" if link.origin else "UNMATCHED"
-                print(f"{'  ' * (depth + 1)}{state}: {inp['rel']} ({(inp['sha'] or '')[:10]})")
+                print(f"{indent}changed without a record: {path} ({(inp['sha'] or '')[:10]})")
 
     for sid in producers:
         show(sid, 0)

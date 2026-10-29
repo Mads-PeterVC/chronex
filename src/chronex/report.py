@@ -25,7 +25,7 @@ def _compact(value: Any) -> Any:
 def report_data(graph: Graph, target: Path, title: str | None = None) -> dict[str, Any]:
     producers = graph.producers_of(target)
     if not producers:
-        raise SystemExit(f"no recorded step wrote the current content of {target}")
+        raise SystemExit(graph.why_unknown(target))
     keep: set[str] = set(producers)
     for sid in producers:
         keep |= graph.ancestry(sid)
