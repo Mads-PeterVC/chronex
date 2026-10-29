@@ -126,6 +126,7 @@ and do nothing outside a step. Use them for files a signature cannot name in adv
 | `superseded-input` | warn | An input was later rewritten at its path, e.g. by a re-run. |
 | `mixed-lineage` | warn | A step's inputs descend from different versions of the same file. |
 | `untracked-workers` | warn | The step started worker processes (multiprocessing); their file access is unseen. |
+| `unrecorded-code` | warn | The code was piped in on stdin, so the record does not hold it. |
 | `subprocess` | info | The step ran another program; its file access is only known from declarations. |
 | `undeclared-write` | info | The step wrote a file it did not declare. |
 | `changed-on-disk` | info | An output on disk no longer matches what the step wrote. |

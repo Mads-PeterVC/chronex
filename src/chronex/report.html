@@ -425,6 +425,7 @@ const CHECK_TEXT = {
   "ambiguous-input": "An input has the same content as outputs of unrelated steps, or too little content to tell; it is not linked to any of them.",
   "incomplete": "The step never recorded an end: it is still running, or was killed without warning.",
   "missing-input": "A declared input did not exist.",
+  "unrecorded-code": "The code was piped in on stdin, so the record does not hold it.",
   "untracked-workers": "The step started worker processes; what they read and wrote is only known from declarations.",
 };
 function checksView() {

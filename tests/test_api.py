@@ -160,3 +160,28 @@ def test_track_records_its_script_and_inline_source(workdir: Path) -> None:
     found = {r["name"]: r for r in records(workdir)}
     assert found["job"]["code"]["entry"] == os.path.realpath(workdir / "job.py")
     assert found["inline"]["code"]["inline"]["source"] == code
+
+
+def test_a_named_decorator_records_its_parameters(workdir: Path) -> None:
+    @chronex.step("scaled", alpha=2)
+    def scale(target: Out[Path], factor: int = 3) -> None:
+        target.write_text("x")
+
+    scale(Path("out"))
+    (record,) = records(workdir)
+    assert record["name"] == "scaled"
+    assert record["params"] == {"alpha": 2, "factor": 3}
+
+
+def test_code_from_stdin_is_flagged(workdir: Path) -> None:
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CHRONEX_")}
+    code = "import chronex; chronex.track()"
+    subprocess.run([sys.executable, "-"], input=code, text=True, cwd=workdir, env=env, check=True)
+    (record,) = records(workdir)
+    assert record["name"] == "stdin"
+    assert record["code"]["unrecorded"] == "read from stdin"
+    graph = graphs.build([record])
+    assert [f.code for _, f in graph.all_flags()] == ["unrecorded-code"]

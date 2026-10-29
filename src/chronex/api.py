@@ -76,7 +76,9 @@ def _roles(function: Callable[..., Any]) -> dict[str, _Role]:
     return roles
 
 
-def _decorate(function: Callable[P, R], name: str) -> Callable[P, R]:
+def _decorate(
+    function: Callable[P, R], name: str, fixed: dict[str, Any] | None = None
+) -> Callable[P, R]:
     if inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function):
         raise TypeError(
             f"{function.__qualname__} is a generator, which runs after the call returns; record "
@@ -90,7 +92,7 @@ def _decorate(function: Callable[P, R], name: str) -> Callable[P, R]:
     def begin(*args: Any, **kwargs: Any) -> Step:
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        params = {k: v for k, v in bound.arguments.items() if k not in roles}
+        params = {**(fixed or {}), **{k: v for k, v in bound.arguments.items() if k not in roles}}
         step = Step(name, params, kind="function", function_file=source, function=qualified)
         for param, role in roles.items():
             for path in _paths(bound.arguments[param]):
@@ -135,7 +137,7 @@ class StepSpec:
         self._steps: list[Step] = []
 
     def __call__(self, function: Callable[P, R]) -> Callable[P, R]:
-        return _decorate(function, self.name or function.__name__)
+        return _decorate(function, self.name or function.__name__, self.params)
 
     def __enter__(self) -> Step:
         if self.name is None:

@@ -97,6 +97,7 @@ environment variables is recorded.
 | `superseded-input` | warn | An input was later rewritten (with different content) at the path it came from, e.g. by a re-run. |
 | `mixed-lineage` | warn | A step's inputs descend from different versions of the same file. It is reported where the versions first meet. |
 | `untracked-workers` | warn | The step started worker processes; their file access is only known from declarations. |
+| `unrecorded-code` | warn | The code was read from stdin (`python -`), so the record does not hold it. |
 | `subprocess` | info | The step ran another program; its file access is only known from declarations. |
 | `undeclared-write` | info | The step wrote a file it did not declare. |
 | `changed-on-disk` | info | An output on disk no longer matches what the step wrote. |

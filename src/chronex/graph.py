@@ -419,6 +419,15 @@ def _check_record(
         for path in record.get("missing_outputs", []):
             rel = os.path.relpath(path, record["cwd"])
             flags.append(Flag("error", "missing-output", f"declared output {rel} was not written"))
+    if record.get("code", {}).get("unrecorded"):
+        flags.append(
+            Flag(
+                "warn",
+                "unrecorded-code",
+                f"the code was {record['code']['unrecorded']}, so it is not in the record; "
+                "save it as a script, or use python -c",
+            )
+        )
     if record["observed"].get("workers"):
         flags.append(
             Flag(

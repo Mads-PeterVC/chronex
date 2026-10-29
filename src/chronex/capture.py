@@ -106,6 +106,8 @@ def script_name() -> str:
         return "script"
     if sys.argv[0] == "-c":
         return "inline"
+    if sys.argv[0] == "-":
+        return "stdin"
     return Path(sys.argv[0]).stem
 
 
@@ -135,6 +137,7 @@ def code_identity(function_file: str | None = None, entry: str | None = None) ->
     return {
         "entry": os.path.realpath(main) if main else None,
         "inline": _inline(),
+        "unrecorded": "read from stdin" if sys.argv[:1] == ["-"] else None,
         "files": files,
         "git": list(repos.values()),
     }
