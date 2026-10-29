@@ -19,8 +19,8 @@ with the results (rsync, `hex remote pull`), and nothing needs a server.
 
 ```bash
 chronex check results/            # link every record below results/ and list problems
-chronex show results/cv.png .     # the upstream lineage of a file, as a tree
-chronex report results/cv.png . -o lineage.html   # an interactive lineage page
+chronex show results/cv.png       # the upstream lineage of a file, as a tree
+chronex report results/cv.png -o lineage.html   # an interactive lineage page
 chronex run -- python legacy.py   # record a script without changing it
 ```
 
