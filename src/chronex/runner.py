@@ -8,12 +8,17 @@ wrapper records the command itself, with the inputs given by ``--in`` and the ou
 
 from __future__ import annotations
 
+import contextlib
 import glob
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import types
+from collections.abc import Iterator
 from pathlib import Path
 
 import chronex
@@ -32,6 +37,37 @@ def _snapshot(directories: list[str]) -> dict[str, tuple[int, int]]:
     return state
 
 
+def _describe(returncode: int) -> str:
+    if returncode < 0:
+        return f"killed: {signal.Signals(-returncode).name}"
+    return f"exit code {returncode}"
+
+
+@contextlib.contextmanager
+def _forwarding_sigterm() -> Iterator[list[subprocess.Popen[bytes]]]:
+    """Pass SIGTERM on to the command (a Slurm time limit hits chronex first).
+
+    Installed before the command starts, so no SIGTERM is lost. SIGINT is left to the
+    terminal, which sends it to the command as well.
+    """
+    started: list[subprocess.Popen[bytes]] = []
+    if threading.current_thread() is not threading.main_thread():
+        yield started
+        return
+
+    def forward(signum: int, frame: types.FrameType | None) -> None:
+        for process in started:
+            process.send_signal(signum)
+
+    previous = signal.signal(signal.SIGTERM, forward)
+    previous_int = signal.signal(signal.SIGINT, lambda signum, frame: None)
+    try:
+        yield started
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        signal.signal(signal.SIGINT, previous_int)
+
+
 def run(
     command: list[str],
     inputs: list[str] | None = None,
@@ -41,6 +77,7 @@ def run(
     quiet: bool = False,
 ) -> int:
     inputs, outputs, watch = inputs or [], outputs or [], watch or []
+    declared = bool(inputs or outputs or watch)
     wrapper = Step(name or Path(command[0]).name, {"argv": command}, kind="command")
     with tempfile.NamedTemporaryFile("r", suffix=".txt", delete=False) as listing:
         records_file = listing.name
@@ -53,33 +90,56 @@ def run(
     env["PYTHONPATH"] = os.pathsep.join(p for p in (BOOT, env.get("PYTHONPATH")) if p)
 
     before = _snapshot(watch)
-    returncode = subprocess.call(command, env=env)
+    with _forwarding_sigterm() as started:
+        try:
+            started.append(subprocess.Popen(command, env=env))
+        except OSError as error:
+            os.unlink(records_file)
+            print(f"chronex run: cannot run {command[0]}: {error.strerror}", file=sys.stderr)
+            return 127 if isinstance(error, FileNotFoundError) else 126
+        wrapper._write_start()  # if chronex itself is killed, the command shows as incomplete
+        returncode = started[0].wait()
     after = _snapshot(watch)
     children = [line for line in Path(records_file).read_text().splitlines() if line]
     os.unlink(records_file)
 
-    for child in children:  # sys.exit(1) and kills are invisible from inside the process
+    # The Python processes recorded themselves; unless files are declared, the command adds
+    # nothing to their records, and is not recorded.
+    keep = declared or not children
+    names = []
+    for child in children:
         record = json.loads(Path(child).read_text())
-        if record["status"] == "running":
+        names.append(record["name"])
+        changed = False
+        if record["status"] == "running":  # killed before it could finish its record
             record["status"] = "failed"
             record["error"] = (
-                f"the process ended without finishing the step (exit code {returncode})"
+                f"the process ended without finishing the step ({_describe(returncode)})"
             )
-        elif record["status"] == "completed" and returncode != 0:
+            changed = True
+        elif record["status"] == "completed" and returncode != 0:  # sys.exit(1), invisible inside
             record["status"] = "failed"
-            record["error"] = f"exit code {returncode}"
-        else:
-            continue
-        Path(child).write_text(json.dumps(record, indent=1))
+            record["error"] = _describe(returncode)
+            changed = True
+        if not keep and record["parent"] == wrapper.id:
+            record["parent"] = None
+            changed = True
+        if changed:
+            Path(child).write_text(json.dumps(record, indent=1))
 
-    declared = bool(inputs or outputs or watch)
+    if not keep:
+        if wrapper.path is not None:
+            wrapper.path.unlink(missing_ok=True)
+        if not quiet:
+            print(f"chronex: recorded {', '.join(names)}", file=sys.stderr)
+        return _exit_code(returncode)
+
     if not children and not declared:
         print(
             f"chronex: {command[0]} recorded no Python steps and declares no files; "
             "give its files with --in, --out or --watch",
             file=sys.stderr,
         )
-
     wrapper.start()
     for pattern in inputs:
         for path in sorted(glob.glob(pattern)) or [pattern]:
@@ -90,8 +150,13 @@ def run(
         if before.get(path) != after[path]:
             wrapper.output(path)
     wrapper.subprocesses.append(" ".join(command))
-    record = wrapper.finish(None if returncode == 0 else f"exit code {returncode}")
+    record = wrapper.finish(None if returncode == 0 else _describe(returncode))
     if not quiet:
-        steps = f" and {len(children)} Python step(s)" if children else ""
+        steps = f" and {', '.join(names)}" if names else ""
         print(f"chronex: recorded {wrapper.name}{steps} in {record.parent}", file=sys.stderr)
-    return returncode
+    return _exit_code(returncode)
+
+
+def _exit_code(returncode: int) -> int:
+    """A shell's exit code for the command: 128 + the signal that killed it, if one did."""
+    return 128 - returncode if returncode < 0 else returncode

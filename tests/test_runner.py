@@ -23,15 +23,18 @@ def by_kind(root: Path) -> tuple[dict, list[dict]]:
     return wrapper, [r for r in found if r["parent"] is not None]
 
 
+def env_without_chronex() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if not k.startswith("CHRONEX_")}
+
+
 def test_python_records_itself_without_changes(workdir: Path) -> None:
     Path("in.txt").write_text("hello")
     Path("script.py").write_text(SCRIPT)
     assert chronex_run("--", sys.executable, "script.py", cwd=workdir) == 0
-    wrapper, (record,) = by_kind(workdir)
+    (record,) = graphs.load(workdir)  # the command adds nothing to what Python recorded
     assert record["name"] == "script"
     assert record["auto"] is True
-    assert record["parent"] == wrapper["id"]
-    assert wrapper["params"]["argv"] == [sys.executable, "script.py"]
+    assert record["parent"] is None
     assert [i["rel"] for i in record["inputs"]] == ["in.txt"]
     assert [o["rel"] for o in record["outputs"]] == ["out.txt"]
     script = os.path.realpath(workdir / "script.py")
@@ -43,14 +46,14 @@ def test_name_applies_to_the_recorded_python_process(workdir: Path) -> None:
     Path("in.txt").write_text("hello")
     Path("script.py").write_text(SCRIPT)
     assert chronex_run("--name", "shout", "--", sys.executable, "script.py", cwd=workdir) == 0
-    wrapper, (record,) = by_kind(workdir)
-    assert record["name"] == wrapper["name"] == "shout"
+    (record,) = graphs.load(workdir)
+    assert record["name"] == "shout"
 
 
 def test_inline_python_records_its_source(workdir: Path) -> None:
     Path("in.txt").write_text("hello")
     assert chronex_run("--", sys.executable, "-c", SCRIPT, cwd=workdir) == 0
-    _, (record,) = by_kind(workdir)
+    (record,) = graphs.load(workdir)
     assert record["name"] == "inline"
     assert record["code"]["inline"]["source"] == SCRIPT
 
@@ -58,9 +61,9 @@ def test_inline_python_records_its_source(workdir: Path) -> None:
 def test_exit_code_marks_failure(workdir: Path) -> None:
     Path("script.py").write_text("import sys; sys.exit(3)")
     assert chronex_run("--", sys.executable, "script.py", cwd=workdir) == 3
-    wrapper, (record,) = by_kind(workdir)
-    assert record["status"] == wrapper["status"] == "failed"
-    assert wrapper["error"] == "exit code 3"
+    (record,) = graphs.load(workdir)
+    assert record["status"] == "failed"
+    assert record["error"] == "exit code 3"
 
 
 def test_a_command_with_nothing_declared_warns(workdir: Path) -> None:
@@ -98,3 +101,65 @@ def test_other_commands_use_declared_inputs_and_watched_outputs(workdir: Path) -
     assert record["name"] == "copy"
     assert [i["rel"] for i in record["inputs"]] == ["in.txt"]
     assert [o["rel"] for o in record["outputs"]] == ["results/out.txt"]
+
+
+def test_one_flag_takes_several_paths(workdir: Path) -> None:
+    Path("a.txt").write_text("a")
+    Path("b.txt").write_text("b")
+    command = [
+        "--in",
+        "a.txt",
+        "b.txt",
+        "--out",
+        "c.txt",
+        "--",
+        "sh",
+        "-c",
+        "cat a.txt b.txt > c.txt",
+    ]
+    assert chronex_run(*command, cwd=workdir) == 0
+    (record,) = graphs.load(workdir)
+    assert [i["rel"] for i in record["inputs"]] == ["a.txt", "b.txt"]
+
+
+def test_a_command_that_cannot_run_is_a_clear_error(workdir: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "chronex.cli", "run", "--", "./no-such-program"],
+        cwd=workdir,
+        env=env_without_chronex(),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 127
+    assert result.stderr.startswith("chronex run: cannot run ./no-such-program")
+    assert "Traceback" not in result.stderr
+    assert graphs.load(workdir) == []
+
+
+SLOW = """
+import sys, time
+from pathlib import Path
+Path("a.txt").write_text("half")
+print("ready", flush=True)
+time.sleep(30)
+"""
+
+
+def test_sigterm_reaches_the_command_and_is_recorded(workdir: Path) -> None:
+    import signal
+
+    command = ["run", "--name", "slow", "--out", "a.txt", "--", sys.executable, "-c", SLOW]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "chronex.cli", *command],
+        cwd=workdir,
+        env=env_without_chronex(),
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout is not None and process.stdout.readline().strip() == "ready"
+    process.send_signal(signal.SIGTERM)
+    assert process.wait(timeout=20) == 128 + signal.SIGTERM
+    wrapper, (child,) = by_kind(workdir)
+    assert wrapper["status"] == child["status"] == "failed"
+    assert wrapper["error"] == child["error"] == "killed: SIGTERM"
+    assert wrapper["outputs"][0]["kind"] == "file"

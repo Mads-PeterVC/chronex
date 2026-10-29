@@ -114,6 +114,9 @@ environment variables is recorded.
   a sweep). Nothing flags that, as the two cannot be told apart.
 - `chronex.track()` cannot see `sys.exit(1)` from inside the process. `chronex run` can, and
   marks the record failed.
+- `chronex run` passes SIGTERM to the command it started, not to that command's own children:
+  `kill` on `chronex run -- sh -c '…; sleep 60'` ends `sh` and leaves `sleep` running. Slurm
+  signals every process of a job, so a time limit is not affected.
 - `chronex run` uses a `sitecustomize` module. That shadows any existing `sitecustomize` in
   the environment.
 - In a container, chronex must be installed in the image. That makes it a grimoire concern.

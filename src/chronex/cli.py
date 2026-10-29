@@ -131,7 +131,10 @@ def _report(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
-        print("chronex run: give a command after --", file=sys.stderr)
+        print(
+            "chronex run: give the command after --, e.g. chronex run --in a.csv -- sort a.csv",
+            file=sys.stderr,
+        )
         return 2
     return run(
         command,
@@ -154,10 +157,18 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("run", help="run a command and record it without changing its code")
-    p.add_argument("--in", dest="inputs", action="append", default=[], help="input path or glob")
-    p.add_argument("--out", dest="outputs", action="append", default=[], help="output path")
     p.add_argument(
-        "--watch", action="append", default=[], help="directory whose changes are outputs"
+        "--in", dest="inputs", nargs="+", action="extend", default=[], help="input paths or globs"
+    )
+    p.add_argument(
+        "--out", dest="outputs", nargs="+", action="extend", default=[], help="output paths"
+    )
+    p.add_argument(
+        "--watch",
+        nargs="+",
+        action="extend",
+        default=[],
+        help="directories whose changes are outputs",
     )
     p.add_argument("--name", help="step name (default: the command, or the Python script)")
     p.add_argument("-q", "--quiet", action="store_true", help="do not report what was recorded")
