@@ -29,6 +29,8 @@ from chronex.hashing import identify
 
 SCHEMA = "chronex/0"
 RECORD_DIR = ".chronex"
+# Set while a step runs, so a process it starts knows it was started by one.
+STEP_VARIABLE = "CHRONEX_STEP"
 
 _stack: list[Step] = []
 
@@ -183,6 +185,7 @@ class Step:
         self.path: Path | None = None
         self._open = False
         self._listed = False
+        self._enclosing_env: str | None = None
 
     # -- declaring files -------------------------------------------------------------------
 
@@ -233,6 +236,8 @@ class Step:
     def start(self) -> Step:
         self._write_start()
         _catch_sigterm()
+        self._enclosing_env = os.environ.get(STEP_VARIABLE)
+        os.environ[STEP_VARIABLE] = self.name  # inherited by workers and subprocesses
         _stack.append(self)
         audit.listen(self._listen)
         self._open = True
@@ -246,6 +251,10 @@ class Step:
         audit.unlisten(self._listen)
         if self in _stack:
             _stack.remove(self)
+        if self._enclosing_env is None:
+            os.environ.pop(STEP_VARIABLE, None)
+        else:
+            os.environ[STEP_VARIABLE] = self._enclosing_env
         _release_sigterm()
         if isinstance(error, str):
             self.status, self.error = "failed", error

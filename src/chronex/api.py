@@ -12,6 +12,7 @@ import functools
 import inspect
 import os
 import sys
+import warnings
 from collections.abc import Callable, Iterator
 from types import TracebackType
 from typing import (
@@ -26,7 +27,7 @@ from typing import (
 )
 
 from chronex.capture import main_file, script_name
-from chronex.record import Step, current
+from chronex.record import STEP_VARIABLE, Step, current
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -179,11 +180,32 @@ def step(arg: Any = None, /, **params: Any) -> Any:
     return StepSpec(arg, params)
 
 
+_warned = False
+
+
+def _unrecorded(function: str, path: Any) -> None:
+    """Warn, once, when a process started by a step declares a file nothing records."""
+    global _warned
+    enclosing = os.environ.get(STEP_VARIABLE)
+    if enclosing is None or _warned:
+        return
+    _warned = True
+    warnings.warn(
+        f"chronex.{function}({os.fspath(path)!r}) in a process started by step {enclosing} "
+        "(a worker or subprocess) is not recorded, as this process has no step of its own; "
+        "declare the file in that step, or make this function a step",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
 def input(path: T, param: str | None = None) -> T:
     """Declare an input of the current step and return ``path``; a no-op outside a step."""
     active = current()
     if active is not None:
         active.input(path, param)  # type: ignore[arg-type]
+    else:
+        _unrecorded("input", path)
     return path
 
 
@@ -192,6 +214,8 @@ def output(path: T, param: str | None = None) -> T:
     active = current()
     if active is not None:
         active.output(path, param)  # type: ignore[arg-type]
+    else:
+        _unrecorded("output", path)
     return path
 
 

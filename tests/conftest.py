@@ -10,6 +10,7 @@ def workdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CHRONEX_PARENT", raising=False)
     monkeypatch.delenv("CHRONEX_AUTO", raising=False)
+    monkeypatch.delenv("CHRONEX_STEP", raising=False)
     return tmp_path
 
 

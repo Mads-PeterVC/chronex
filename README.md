@@ -102,8 +102,9 @@ step upstream of it, and every flag.
 `chronex.input(path)` and `chronex.output(path)` return `path`, work inside any of the above,
 and do nothing outside a step. Use them for files a signature cannot name in advance, and in
 helper modules: a config file read inside a library function is flagged `undeclared-read`
-until the function declares it with `chronex.input`. They do nothing in worker processes
-(multiprocessing), which belong to no step.
+until the function declares it with `chronex.input`. In a worker process (multiprocessing)
+they record nothing, as the worker belongs to no step, and warn once that they do not;
+declare the worker's files in the step that starts the pool.
 
 A step is named after its function, its block's name, or its script (`inline` for
 `python -c`); `name=` or `--name` overrides that.

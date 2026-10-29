@@ -124,3 +124,33 @@ def test_a_forked_child_does_not_inherit_open_steps(workdir: Path) -> None:
             os._exit(0)
         os.waitpid(pid, 0)
     assert Path("child").read_text() == "False False"
+
+
+def declare_in_worker(path: str) -> str:
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        chronex.input(path)
+    return str(caught[0].message) if caught else ""
+
+
+def test_declaring_a_file_in_a_worker_warns(workdir: Path) -> None:
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    Path("config.json").write_text("{}")
+    with chronex.step("parallel"):
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(1, mp_context=context) as pool:
+            (message,) = pool.map(declare_in_worker, ["config.json"])
+    assert "started by step parallel" in message
+    assert "not recorded" in message
+
+
+def test_declaring_outside_any_step_is_quiet(workdir: Path) -> None:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        chronex.input("anything")
