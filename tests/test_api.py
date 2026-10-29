@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -145,3 +146,17 @@ def test_a_parent_may_read_what_its_child_steps_wrote(workdir: Path) -> None:
         Path(s.output("final.txt")).write_text(Path("mid.txt").read_text() + "!")
     found = {r["name"]: r for r in records(workdir)}
     assert found["outer"]["undeclared_reads"] == []
+
+
+def test_track_records_its_script_and_inline_source(workdir: Path) -> None:
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CHRONEX_")}
+    Path("job.py").write_text("import chronex\nchronex.track(n=1)\n")
+    subprocess.run([sys.executable, "job.py"], cwd=workdir, env=env, check=True)
+    code = "import chronex; chronex.track()"
+    subprocess.run([sys.executable, "-c", code], cwd=workdir, env=env, check=True)
+    found = {r["name"]: r for r in records(workdir)}
+    assert found["job"]["code"]["entry"] == os.path.realpath(workdir / "job.py")
+    assert found["inline"]["code"]["inline"]["source"] == code

@@ -85,7 +85,14 @@ def _run(args: argparse.Namespace) -> int:
     if not command:
         print("chronex run: give a command after --", file=sys.stderr)
         return 2
-    return run(command, inputs=args.inputs, outputs=args.outputs, watch=args.watch, name=args.name)
+    return run(
+        command,
+        inputs=args.inputs,
+        outputs=args.outputs,
+        watch=args.watch,
+        name=args.name,
+        quiet=args.quiet,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,7 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--watch", action="append", default=[], help="directory whose changes are outputs"
     )
-    p.add_argument("--name", help="step name (default: the command)")
+    p.add_argument("--name", help="step name (default: the command, or the Python script)")
+    p.add_argument("-q", "--quiet", action="store_true", help="do not report what was recorded")
     p.add_argument("command", nargs=argparse.REMAINDER)
     p.set_defaults(func=_run)
 

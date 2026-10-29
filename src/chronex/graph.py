@@ -164,8 +164,9 @@ def build(records: list[Record]) -> Graph:
         ]
 
     graph = Graph(records=by_id, links=links, flags=flags, artifacts=artifacts)
+    failed_parents = {r["parent"] for r in records if r["status"] == "failed" and r["parent"]}
     for record in records:
-        _check_record(record, graph, writers)
+        _check_record(record, graph, writers, failed_parents)
     _check_mixed(graph, writers)
     return graph
 
@@ -244,11 +245,15 @@ def _resolve(
 
 
 def _check_record(
-    record: Record, graph: Graph, writers: dict[tuple[str, str], list[tuple[Record, str]]]
+    record: Record,
+    graph: Graph,
+    writers: dict[tuple[str, str], list[tuple[Record, str]]],
+    failed_parents: set[str],
 ) -> None:
     sid = record["id"]
     flags = graph.flags[sid]
-    if record["status"] == "failed":
+    # A failure is reported where it happened, not again by every step enclosing it.
+    if record["status"] == "failed" and sid not in failed_parents:
         flags.append(Flag("warn", "failed", f"step failed: {record.get('error')}"))
     elif record["status"] == "running":
         flags.append(

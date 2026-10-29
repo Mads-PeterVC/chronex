@@ -162,3 +162,14 @@ def test_a_cycle_of_links_does_not_crash(workdir: Path) -> None:
         Path(record.pop("_file")).write_text(json.dumps(record))
     graph = graphs.build(graphs.load(workdir))
     assert len(graph.records) == 2
+
+
+def test_a_failure_is_reported_once_at_the_innermost_step(workdir: Path) -> None:
+    @chronex.step
+    def inner() -> None:
+        raise ValueError("deep down")
+
+    with contextlib.suppress(ValueError), chronex.step("outer"):
+        inner()
+    graph = graphs.build(graphs.load(workdir))
+    assert codes(graph) == {"failed": ["inner"]}

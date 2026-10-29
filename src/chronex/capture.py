@@ -78,9 +78,40 @@ def _local_module_files(roots: set[str]) -> dict[str, str]:
     return files
 
 
-def code_identity(function_file: str | None = None) -> dict[str, Any]:
-    """The entry script, the step's own file, every loaded local module, and their git state."""
+def main_file() -> str | None:
+    """The script being run.
+
+    ``__main__.__file__``, or ``sys.argv[0]`` when that is gone: Python 3.15 clears it before
+    ``atexit`` handlers run.
+    """
     main = getattr(sys.modules.get("__main__"), "__file__", None)
+    if isinstance(main, str):
+        return main
+    if sys.argv and sys.argv[0] and os.path.isfile(sys.argv[0]):
+        return os.path.abspath(sys.argv[0])
+    return None
+
+
+def inline_source() -> str | None:
+    """The code given with ``python -c``, if that is how this process runs."""
+    argv = getattr(sys, "orig_argv", [])
+    if sys.argv[:1] != ["-c"] or "-c" not in argv[:-1]:
+        return None
+    return str(argv[argv.index("-c") + 1])
+
+
+def script_name() -> str:
+    """A step name for the whole process: the script's name, or ``inline`` for ``-c``."""
+    if not sys.argv or not sys.argv[0]:
+        return "script"
+    if sys.argv[0] == "-c":
+        return "inline"
+    return Path(sys.argv[0]).stem
+
+
+def code_identity(function_file: str | None = None, entry: str | None = None) -> dict[str, Any]:
+    """The entry script, the step's own file, every loaded local module, and their git state."""
+    main = entry or main_file()
     anchors = [p for p in (main, function_file) if p]
     roots = set()
     # Directories on PYTHONPATH hold the user's own modules too (but not chronex's boot dir).
@@ -103,9 +134,17 @@ def code_identity(function_file: str | None = None) -> dict[str, Any]:
             repos[state["root"]] = state
     return {
         "entry": os.path.realpath(main) if main else None,
+        "inline": _inline(),
         "files": files,
         "git": list(repos.values()),
     }
+
+
+def _inline() -> dict[str, str] | None:
+    source = inline_source()
+    if source is None:
+        return None
+    return {"source": source, "sha": hashlib.sha256(source.encode()).hexdigest()}
 
 
 def _package_versions() -> dict[str, str]:

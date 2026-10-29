@@ -13,7 +13,6 @@ import inspect
 import os
 import sys
 from collections.abc import Callable, Iterator
-from pathlib import Path
 from types import TracebackType
 from typing import (
     Annotated,
@@ -26,6 +25,7 @@ from typing import (
     overload,
 )
 
+from chronex.capture import main_file, script_name
 from chronex.record import Step, current
 
 T = TypeVar("T")
@@ -199,9 +199,9 @@ def track(name: str | None = None, *, auto: bool = False, **params: Any) -> Step
     One line at the top of a script. Files are then declared with ``chronex.input`` and
     ``chronex.output``; an uncaught exception marks the step failed.
     """
-    main = getattr(sys.modules.get("__main__"), "__file__", None)
-    step_name = name or (Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "script")
-    active = Step(step_name, params, kind="script", auto=auto, function_file=main)
+    active = Step(
+        name or script_name(), params, kind="script", auto=auto, function_file=main_file()
+    )
     active.start()
     _finish_at_exit(active)
     return active

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from chronex import _guard, audit
-from chronex.capture import code_identity, environment
+from chronex.capture import code_identity, environment, main_file
 from chronex.hashing import identify
 
 SCHEMA = "chronex/0"
@@ -163,6 +163,7 @@ class Step:
         self.params = _jsonable(params or {})
         self.function_file = function_file
         self.function = function
+        self.entry = main_file()  # now: by the time the step ends, it may be gone
         self.inputs: list[dict[str, Any]] = []
         self.outputs: list[dict[str, Any]] = []
         self._declared_outputs: list[tuple[str, str | None]] = []
@@ -342,7 +343,7 @@ class Step:
                 "workers": self.workers,
             },
             **checks,
-            "code": code_identity(self.function_file),
+            "code": code_identity(self.function_file, self.entry),
             "env": environment(),
             "shephex": _shephex_identity(self.cwd),
         }

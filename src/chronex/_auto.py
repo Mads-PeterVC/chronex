@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 from chronex.api import _finish_at_exit
+from chronex.capture import main_file, script_name
 from chronex.record import Step
 
 
@@ -20,12 +22,10 @@ class _ProcessStep(Step):
         pass
 
     def _write(self) -> Path:
-        if sys.argv and sys.argv[0]:
-            self.name = Path(sys.argv[0]).stem
-            self.params = {"argv": sys.argv[1:]}
-            self.id = self.id.replace("-python-", f"-{self.name}-", 1)
-        main = getattr(sys.modules.get("__main__"), "__file__", None)
-        self.function_file = main
+        self.name = os.environ.get("CHRONEX_NAME") or script_name()
+        self.params = {"argv": sys.argv[1:]}
+        self.id = self.id.replace("-python-", f"-{self.name}-", 1)
+        self.entry = self.function_file = main_file()
         return super()._write()
 
 

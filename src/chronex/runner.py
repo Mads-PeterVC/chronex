@@ -12,6 +12,7 @@ import glob
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -37,6 +38,7 @@ def run(
     outputs: list[str] | None = None,
     watch: list[str] | None = None,
     name: str | None = None,
+    quiet: bool = False,
 ) -> int:
     inputs, outputs, watch = inputs or [], outputs or [], watch or []
     wrapper = Step(name or Path(command[0]).name, {"argv": command}, kind="command")
@@ -46,6 +48,8 @@ def run(
     env["CHRONEX_AUTO"] = "1"
     env["CHRONEX_PARENT"] = wrapper.id
     env["CHRONEX_RECORD_LIST"] = records_file
+    if name:
+        env["CHRONEX_NAME"] = name
     env["PYTHONPATH"] = os.pathsep.join(p for p in (BOOT, env.get("PYTHONPATH")) if p)
 
     before = _snapshot(watch)
@@ -68,8 +72,13 @@ def run(
             continue
         Path(child).write_text(json.dumps(record, indent=1))
 
-    if children and not (inputs or outputs or watch):
-        return returncode  # the Python processes recorded themselves
+    declared = bool(inputs or outputs or watch)
+    if not children and not declared:
+        print(
+            f"chronex: {command[0]} recorded no Python steps and declares no files; "
+            "give its files with --in, --out or --watch",
+            file=sys.stderr,
+        )
 
     wrapper.start()
     for pattern in inputs:
@@ -81,5 +90,8 @@ def run(
         if before.get(path) != after[path]:
             wrapper.output(path)
     wrapper.subprocesses.append(" ".join(command))
-    wrapper.finish(None if returncode == 0 else RuntimeError(f"exit code {returncode}"))
+    record = wrapper.finish(None if returncode == 0 else f"exit code {returncode}")
+    if not quiet:
+        steps = f" and {len(children)} Python step(s)" if children else ""
+        print(f"chronex: recorded {wrapper.name}{steps} in {record.parent}", file=sys.stderr)
     return returncode
