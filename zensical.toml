@@ -1,0 +1,22 @@
+[project]
+site_name = "chronex"
+site_description = "Provenance records for computational research"
+site_author = "Mads-Peter Verner Christiansen"
+copyright = "Mads-Peter Verner Christiansen"
+nav = [
+  { "Home" = "index.md" },
+  { "Design" = "design.md" },
+  { "Toy workflow" = "toy-workflow.md" },
+  { "Build log" = [
+    "log/index.md",
+    "log/phase-0.md",
+    "log/phase-1.md",
+  ] },
+]
+
+[project.theme]
+language = "en"
+features = [
+  "content.code.annotate",
+  "content.code.copy",
+]
