@@ -32,7 +32,7 @@ and it cannot call a read "undeclared".
 - Output directories now list their files' hashes. Collecting into `data/labels/` and then
   reading one file from it still links to the collect step.
 - shephex's `ScriptProcedure` must unwrap decorated functions before reading their source.
-  The patch is in `dev/shephex-unwrap.patch`.
+  The three-line change belongs in shephex and is not released yet.
 - shephex's bookkeeping files (`meta.json`, `context.json`, `result.pkl`, ...) are ignored by
   the audit hook. They are not the experiment's data.
 - chronex's own modules are recorded by version, not listed as user code.

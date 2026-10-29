@@ -142,8 +142,8 @@ docstrings, comments or blanks), summed over the eight scripts:
   decorator's.
 
 At run time a recorded step costs about 4–5 ms (hashing, code identity, and writing a
-2–3 kB JSON record), against 0.3 ms for a trivial bare step (`dev/overhead.py`). Git state
-is read once per process.
+2–3 kB JSON record), against 0.3 ms for a trivial bare step (measured with a local timing
+script, not part of the repository). Git state is read once per process.
 
 ## Findings
 
@@ -156,8 +156,8 @@ is read once per process.
 3. **shephex needs one small change.** `ScriptProcedure` saves the source of
    `inspect.getsourcefile(function)`. For a decorated function that is the decorator's
    module, so the experiment ships chronex's source as `procedure.py`. Unwrapping first
-   (`inspect.getsourcefile(inspect.unwrap(function))`) fixes it. The three-line patch is in
-   `dev/shephex-unwrap.patch`, and the mixed variant's tests are skipped until shephex has it.
+   (`inspect.getsourcefile(inspect.unwrap(function))`) fixes it. The change is three lines in
+   shephex, not yet released, and the mixed variant's tests are skipped until shephex has it.
 4. **shephex's own files become origins.** Collect reads `shephex/options.json` to learn each
    experiment's chunk, and those files appear as origin inputs because no step wrote them. A
    shephex integration could write a small chronex record when it creates an experiment, so

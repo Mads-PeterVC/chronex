@@ -10,6 +10,10 @@ import pytest
 
 from chronex import graph as graphs
 
+# The toy workflow needs the examples group: uv sync --group examples
+pytest.importorskip("numpy")
+pytest.importorskip("matplotlib")
+
 TOY = Path(__file__).parents[1] / "examples" / "toy-workflow"
 ANNOTATED = ["decorator", "block", "script", "mixed"]
 FAULTS = Counter(

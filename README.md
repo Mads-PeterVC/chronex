@@ -26,6 +26,8 @@ up code, with and without planted mistakes. See `docs/` for the design and the f
 ```bash
 uv sync
 uv run pytest
+uv sync --group examples                  # the toy workflow and its tests
+uv pip install -e ../shephex              # its shephex variant needs an unreleased change
 uv run ruff check && uv run ruff format --check
 uv run mypy
 ```

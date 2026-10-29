@@ -75,7 +75,6 @@ wheels = [
 name = "chronex"
 version = "0.0.1"
 source = { editable = "." }
-default-groups = ["dev", "examples"]
 
 [package.optional-dependencies]
 shephex = [
@@ -99,7 +98,7 @@ examples = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "shephex", marker = "extra == 'shephex'", editable = "../shephex" }]
+requires-dist = [{ name = "shephex", marker = "extra == 'shephex'" }]
 provides-extras = ["shephex"]
 
 [package.metadata.requires-dev]
@@ -112,7 +111,7 @@ docs = [{ name = "zensical", specifier = ">=0.0.73" }]
 examples = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "shephex", editable = "../shephex" },
+    { name = "shephex" },
 ]
 
 [[package]]
@@ -1422,7 +1421,8 @@ wheels = [
 
 [[package]]
 name = "shephex"
-source = { editable = "../shephex" }
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "dill" },
@@ -1431,28 +1431,9 @@ dependencies = [
     { name = "rich-click" },
     { name = "shortuuid" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", specifier = ">=8.2.0" },
-    { name = "dill", specifier = ">=0.3.8" },
-    { name = "littletable", specifier = ">=3.0.0" },
-    { name = "rich", specifier = ">=13.7.1" },
-    { name = "rich-click", specifier = ">=1.8.9" },
-    { name = "shortuuid", specifier = ">=1.0.13" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=7.0.1" },
-    { name = "pytest-cov", specifier = ">=5.0.0" },
-    { name = "pytest-mock", specifier = ">=3.14.0" },
-    { name = "ruff", specifier = ">=0.6.5" },
-]
-docs = [
-    { name = "mkdocstrings-python", specifier = ">=1.15.0" },
-    { name = "pymdown-extensions", specifier = ">=10.14.3" },
-    { name = "zensical", specifier = "==0.0.70" },
+sdist = { url = "https://files.pythonhosted.org/packages/c2/cb/8efec6b0db2fed604916ac35d1a413269a70916edf781b4b85900706bb66/shephex-0.4.0.tar.gz", hash = "sha256:5d6d2312f6673f4e8558c9a4f28e6a5a13ba2541e0b38e06e5f44f7e5143f454", size = 78910, upload-time = "2026-10-19T09:04:20.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/c8/02bf81c80a50c0695bd2af5b10aea0c7b8b3744dd9bcd686dbe8cab40280/shephex-0.4.0-py3-none-any.whl", hash = "sha256:95064ffbece6d0e852815f9cfeff67b4dd95246f64c4aa7f569633841551a8ec", size = 60379, upload-time = "2026-10-19T09:04:19.683Z" },
 ]
 
 [[package]]

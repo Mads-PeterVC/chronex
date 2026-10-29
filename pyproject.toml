@@ -25,7 +25,8 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
 ]
-# The toy workflow in examples/ and its tests.
+# The toy workflow in examples/ and its tests: `uv sync --group examples`. The mixed variant also
+# needs an unreleased shephex change: `uv pip install -e ../shephex` from a checkout.
 examples = [
     "numpy>=1.26",
     "matplotlib>=3.8",
@@ -36,10 +37,7 @@ docs = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "examples"]
-
-[tool.uv.sources]
-shephex = { path = "../shephex", editable = true }
+default-groups = ["dev"]
 
 [tool.ruff]
 line-length = 100
