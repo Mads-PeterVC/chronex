@@ -304,6 +304,14 @@ def _check_record(
                 f"wrote {os.path.relpath(path, record['cwd'])} without declaring it",
             )
         )
+    for path in record.get("missing_inputs", []):
+        flags.append(
+            Flag(
+                "warn",
+                "missing-input",
+                f"declared input {os.path.relpath(path, record['cwd'])} did not exist",
+            )
+        )
     for path in record.get("missing_outputs", []):
         flags.append(Flag("error", "missing-output", f"declared output {path} was not written"))
     if record["observed"]["subprocesses"]:

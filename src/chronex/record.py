@@ -152,6 +152,8 @@ class Step:
         self._declared_outputs: list[tuple[str, str | None]] = []
         self.reads: dict[str, None] = {}
         self.writes: dict[str, None] = {}
+        self._first_read: set[str] = set()  # read before the step wrote them
+        self._overwritten: dict[str, dict[str, Any]] = {}  # identity when first rewritten
         self.subprocesses: list[str] = []
         self.status = "running"
         self.error: str | None = None
@@ -192,8 +194,18 @@ class Step:
             return
         if kind == "read":
             self.reads.setdefault(value)
+            if value not in self.writes:
+                self._first_read.add(value)
         elif kind == "write":
+            # The audit event comes before open() truncates: keep what was read.
+            first = value in self._first_read and value not in self._overwritten
+            if first and os.path.isfile(value):
+                self._overwritten[value] = identify(value)
             self.writes.setdefault(value)
+        elif kind == "rename":
+            source, target = value.split("\0")
+            self.writes.pop(source, None)
+            self.writes.setdefault(target)
         else:
             self.subprocesses.append(value)
 
@@ -252,8 +264,12 @@ class Step:
         def covered(path: str, roots: set[str]) -> bool:
             return any(path == r or path.startswith(os.path.join(r, "")) for r in roots)
 
-        # Reads of files the step wrote itself are not inputs.
-        reads = [p for p in self.reads if p not in written and os.path.isfile(p)]
+        # Reads of files the step wrote itself are not inputs; files read and then rewritten are.
+        reads = [
+            p
+            for p in self.reads
+            if p in self._first_read and (p in self._overwritten or os.path.isfile(p))
+        ]
         undeclared_reads = [p for p in reads if not covered(p, declared_in)]
         if self.auto:
             for path in undeclared_reads:
@@ -262,7 +278,7 @@ class Step:
                     "rel": os.path.relpath(path, self.cwd),
                     "param": None,
                 }
-                observed.update(identify(path))
+                observed.update(self._overwritten.get(path) or identify(path))
                 observed["how"] = "observed"
                 self.inputs.append(observed)
             undeclared_reads = []
@@ -271,6 +287,7 @@ class Step:
             "undeclared_reads": undeclared_reads,
             "undeclared_writes": undeclared_writes,
             "missing_outputs": [o["path"] for o in self.outputs if o["kind"] == "missing"],
+            "missing_inputs": [i["path"] for i in self.inputs if i["kind"] == "missing"],
         }
 
     def _document(self, checks: dict[str, Any], ended: str | None) -> dict[str, Any]:
@@ -321,6 +338,7 @@ class Step:
                 "undeclared_reads": [],
                 "undeclared_writes": [],
                 "missing_outputs": [],
+                "missing_inputs": [],
             }
             self._save(self._document(checks, ended=None))
 

@@ -2,7 +2,8 @@
 
 Every ``open()`` in the process raises an ``open`` audit event, including those inside numpy,
 pandas or ASE. While a step is active, the hook files each event as a read or a write of an
-absolute path. Subprocesses are noted too: what they read and write is invisible here.
+absolute path, and a rename as a write of its new name. Subprocesses are noted too: what they
+read and write is invisible here.
 
 Audit hooks cannot be removed, so one hook is installed per process and forwards events to
 whichever observers are currently listening.
@@ -19,7 +20,8 @@ from typing import Any
 
 from chronex import _guard
 
-Listener = Callable[[str, str], None]  # (kind, value): kind is read, write or subprocess
+# (kind, value): kind is read, write, subprocess, or rename with value "source\0target".
+Listener = Callable[[str, str], None]
 
 _listeners: list[Listener] = []
 _installed = False
@@ -41,17 +43,50 @@ def _ignored_roots() -> tuple[str, ...]:
 _IGNORED_ROOTS = _ignored_roots()
 
 
+# Directories that hold tools' own caches. Other caches (model weights, downloaded datasets)
+# are data, and are observed.
+_IGNORED_PARTS = tuple(
+    os.path.join(os.sep, part, "")
+    for part in (
+        ".chronex",
+        ".matplotlib",
+        "site-packages",
+        "mpl-data",
+        os.path.join(".cache", "matplotlib"),
+        os.path.join(".cache", "fontconfig"),
+        os.path.join(".cache", "pip"),
+        os.path.join(".cache", "uv"),
+    )
+)
+
+
+def _extra_ignored() -> tuple[str, ...]:
+    """Path prefixes listed in ``CHRONEX_IGNORE`` (separated like PATH)."""
+    value = os.environ.get("CHRONEX_IGNORE", "")
+    return tuple(os.path.abspath(p) for p in value.split(os.pathsep) if p)
+
+
 def interesting(path: str) -> bool:
-    """Whether a path is data rather than interpreter, library or system files."""
+    """Whether a path is data rather than interpreter, library, system or cache files."""
     if path.endswith(_IGNORED_SUFFIXES) or "__pycache__" in path:
         return False
-    for part in (".chronex", ".cache", ".matplotlib", "site-packages", "mpl-data"):
-        if f"{os.sep}{part}{os.sep}" in path:
-            return False
+    if any(part in path for part in _IGNORED_PARTS):
+        return False
     head, name = os.path.split(path)
     if os.path.basename(head) == "shephex" and name in _SHEPHEX_BOOKKEEPING:
         return False
+    extra = _extra_ignored()
+    if extra and any(path == p or path.startswith(os.path.join(p, "")) for p in extra):
+        return False
     return not path.startswith(_IGNORED_ROOTS)
+
+
+def _absolute(path: Any) -> str | None:
+    if isinstance(path, int) or path is None:
+        return None
+    if isinstance(path, bytes):
+        path = os.fsdecode(path)
+    return str(os.path.abspath(os.fspath(path)))
 
 
 def _hook(event: str, args: tuple[Any, ...]) -> None:
@@ -59,12 +94,8 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
         return
     if event == "open":
         path, mode, flags = args
-        if isinstance(path, int) or path is None:
-            return
-        if isinstance(path, bytes):
-            path = os.fsdecode(path)
-        path = os.path.abspath(os.fspath(path))
-        if not interesting(path):
+        path = _absolute(path)
+        if path is None or not interesting(path):
             return
         if isinstance(mode, str):
             write = any(c in mode for c in "wax+")
@@ -73,6 +104,11 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
         if not write and os.path.isdir(path):
             return
         kind = "write" if write else "read"
+    elif event == "os.rename":  # also raised by os.replace
+        source, target = _absolute(args[0]), _absolute(args[1])
+        if source is None or target is None or not interesting(target):
+            return
+        kind, path = "rename", f"{source}\0{target}"
     elif event == "subprocess.Popen":
         kind, path = "subprocess", " ".join(map(str, args[1] if args[1] else [args[0]]))
     else:
