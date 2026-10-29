@@ -151,6 +151,12 @@ def run(
             wrapper.output(path)
     wrapper.subprocesses.append(" ".join(command))
     record = wrapper.finish(None if returncode == 0 else _describe(returncode))
+    for entry in wrapper.inputs:
+        if entry["kind"] == "missing":
+            print(f"chronex: declared input {entry['rel']} did not exist", file=sys.stderr)
+    for entry in wrapper.outputs:
+        if entry["kind"] == "missing":
+            print(f"chronex: declared output {entry['rel']} was not written", file=sys.stderr)
     if not quiet:
         steps = f" and {', '.join(names)}" if names else ""
         print(f"chronex: recorded {wrapper.name}{steps} in {record.parent}", file=sys.stderr)

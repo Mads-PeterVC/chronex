@@ -163,3 +163,17 @@ def test_sigterm_reaches_the_command_and_is_recorded(workdir: Path) -> None:
     assert wrapper["status"] == child["status"] == "failed"
     assert wrapper["error"] == child["error"] == "killed: SIGTERM"
     assert wrapper["outputs"][0]["kind"] == "file"
+
+
+def test_a_declared_file_that_is_missing_is_reported_at_once(workdir: Path) -> None:
+    declared = ["--in", "nope.csv", "--out", "never.txt"]
+    result = subprocess.run(
+        [sys.executable, "-m", "chronex.cli", "run", *declared, "--", "true"],
+        cwd=workdir,
+        env=env_without_chronex(),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0  # the command's own exit code
+    assert "declared input nope.csv did not exist" in result.stderr
+    assert "declared output never.txt was not written" in result.stderr
