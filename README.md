@@ -159,6 +159,7 @@ pipeline or an agent's work. `--target FILE` checks only that file's lineage.
 
 `CHRONEX_IGNORE` lists extra paths (separated like `PATH`) whose reads and writes are not
 observed, e.g. scratch directories.
+While a step runs, chronex sets `CHRONEX_STEP` to its name, so processes it starts can tell.
 
 ## More
 
