@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import json
 import os
@@ -98,10 +99,13 @@ def report_data(graph: Graph, target: Path, title: str | None = None) -> dict[st
                     "how": i["how"],
                     "prod": link.producer if link.producer in keep else None,
                     "origin": link.origin,
+                    "ambiguous": sorted({graph.records[a]["name"] for a in link.ambiguous}),
                 }
                 for i, link in zip(r["inputs"], links, strict=True)
             ],
             "outputs": [art(o["sha"]) for o in r["outputs"] if o["sha"]],
+            "undeclared_reads": [rel(p) for p in r.get("undeclared_reads", [])],
+            "missing_inputs": [rel(p) for p in r.get("missing_inputs", [])],
             "depth": depth.get(sid, 0),
         }
 
@@ -134,8 +138,10 @@ def report_data(graph: Graph, target: Path, title: str | None = None) -> dict[st
                 edges[acts[i["prod"]]["stage"], a["stage"]] += 1
             elif i["origin"]:
                 boundaries[a["stage"]][i["path"]] += 1
+            elif i["ambiguous"]:
+                boundaries[a["stage"]]["(same content elsewhere) " + i["path"]] += 1
             else:
-                boundaries[a["stage"]]["(unmatched) " + i["path"]] += 1
+                boundaries[a["stage"]]["(changed without a record) " + i["path"]] += 1
 
     return {
         "title": title or f"Lineage of {target.name}",
@@ -149,7 +155,26 @@ def report_data(graph: Graph, target: Path, title: str | None = None) -> dict[st
         "acts": acts,
         "consumers": consumers,
         "arts": arts,
+        "image": _image(target),
     }
+
+
+IMAGE_TYPES = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".gif": "gif", ".webp": "webp"}
+MAX_IMAGE_BYTES = 5_000_000
+
+
+def _image(target: Path) -> str | None:
+    """The target as a data URI, if it is an image small enough to embed."""
+    suffix = target.suffix.lower()
+    if target.stat().st_size > MAX_IMAGE_BYTES:
+        return None
+    if suffix == ".svg":
+        kind = "svg+xml"
+    elif suffix in IMAGE_TYPES:
+        kind = IMAGE_TYPES[suffix]
+    else:
+        return None
+    return f"data:image/{kind};base64,{base64.b64encode(target.read_bytes()).decode()}"
 
 
 def write_report(graph: Graph, target: Path, output: Path, title: str | None = None) -> Path:

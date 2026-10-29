@@ -128,3 +128,20 @@ def test_show_explains_why_a_file_has_no_lineage(
     assert code == 1 and out.startswith("c was written by make at ")
     assert out.endswith("UTC, but has changed since\n")
     assert show("loose", capsys) == (1, "no recorded step wrote or read loose\n")
+
+
+def test_report_embeds_the_figure_and_lists_hidden_reads(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    Path("config.json").write_text("{}")
+    with chronex.step("plot") as s:
+        Path("config.json").read_text()
+        Path(s.output("figure.png")).write_bytes(b"\x89PNG not really")
+    assert main(["report", "figure.png"]) == 0
+    html = Path("lineage.html").read_text()
+    data = json.loads(html.split("const D = ", 1)[1].split(";\n", 1)[0])
+    assert data["image"].startswith("data:image/png;base64,")
+    (act,) = data["acts"].values()
+    assert act["undeclared_reads"] == ["config.json"]

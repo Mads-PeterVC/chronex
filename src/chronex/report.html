@@ -143,6 +143,8 @@ footer { font-size: 12px; color: var(--muted); }
 .check.error::before { background: var(--err); }
 .check.warn::before { background: var(--warn); }
 .check .who { font-size: 12px; color: var(--muted); }
+.result { margin: 16px 0 0; }
+.result img { display: block; max-width: 100%; max-height: 360px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 </style>
 <div class="wrap">
   <header class="top">
@@ -150,6 +152,7 @@ footer { font-size: 12px; color: var(--muted); }
     <h1 id="title"></h1>
     <p id="lede"></p>
     <div class="chips" id="summary"></div>
+    <figure class="result" id="figure" hidden></figure>
   </header>
   <div class="layout">
     <section aria-label="Lineage">
@@ -199,8 +202,12 @@ function count(level) { return Object.values(acts).reduce((n, a) => n + a.flags.
 function summary() {
   const ids = Object.keys(acts);
   const hosts = new Set(ids.map((id) => acts[id].host));
-  let linked = 0, origins = 0, unmatched = 0;
-  ids.forEach((id) => acts[id].inputs.forEach((i) => (i.prod ? linked++ : i.origin ? origins++ : unmatched++)));
+  let linked = 0, origins = 0, unmatched = 0, ambiguous = 0;
+  ids.forEach((id) => acts[id].inputs.forEach((i) => (i.prod ? linked++ : i.origin ? origins++ : i.ambiguous.length ? ambiguous++ : unmatched++)));
+  if (D.image) {
+    $("#figure").hidden = false;
+    $("#figure").innerHTML = `<img src="${D.image}" alt="${esc(D.target)}">`;
+  }
   $("#eyebrow").textContent = `chronex · ${D.base}`;
   $("#title").textContent = D.title;
   $("#lede").innerHTML = `${ids.length} recorded steps on ${hosts.size} host${hosts.size > 1 ? "s" : ""} lead to <span class="mono">${esc(D.target)}</span>. Steps are linked where one step's output and another's input have the same SHA-256, so copies between folders and machines are followed automatically.`;
@@ -209,6 +216,7 @@ function summary() {
     `<span class="chip ok"><b>${linked}</b> inputs linked to the step that wrote them</span>`,
     `<span class="chip bound"><b>${origins}</b> origin inputs</span>`,
     unmatched ? `<span class="chip err"><b>${unmatched}</b> inputs changed after they were written</span>` : "",
+    ambiguous ? `<span class="chip warn"><b>${ambiguous}</b> inputs with the same content as unrelated outputs</span>` : "",
     `<span class="chip ${e ? "err" : "ok"}"><b>${e}</b> errors</span>`,
     `<span class="chip ${w ? "warn" : "ok"}"><b>${w}</b> warnings</span>`,
   ].join("");
@@ -332,7 +340,7 @@ function actView(id) {
   if (a.error) kv.push(["Error", `<span class="mono">${esc(a.error)}</span>`]);
   Object.entries(a.params).forEach(([k, v]) => kv.push([esc(k), `<span class="mono">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`]));
   const inputs = a.inputs.map((i) => `<div class="io-item">
-      <div><b>${esc(i.param || "input")}</b> ${i.prod ? `<button class="linkbtn" data-act="${esc(i.prod)}">← from ${esc(acts[i.prod].stage)} ${esc(short(i.prod))}</button>` : i.origin ? `<span class="origin">origin · no recorded step wrote this</span>` : `<span class="origin" style="color:var(--err)">changed after it was written</span>`}</div>
+      <div><b>${esc(i.param || "input")}</b> ${i.prod ? `<button class="linkbtn" data-act="${esc(i.prod)}">← from ${esc(acts[i.prod].stage)} ${esc(short(i.prod))}</button>` : i.origin ? `<span class="origin">origin · no recorded step wrote this</span>` : i.ambiguous.length ? `<span class="origin" style="color:var(--warn)">same content as an output of ${esc(i.ambiguous.join(", "))} · not linked</span>` : `<span class="origin" style="color:var(--err)">changed after it was written</span>`}</div>
       <div class="how">${i.how === "observed" ? "observed (opened by the code)" : "declared"}</div>${artBlock(i.a)}</div>`).join("");
   const outputs = a.outputs.map((o) => `<div class="io-item">${artBlock(o)}</div>`).join("");
   const consumers = D.consumers[id] || [];
@@ -344,6 +352,8 @@ function actView(id) {
     <div class="toolbar"><button class="btn" data-trace="${esc(id)}">Trace this run</button></div>
     <dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
     <div class="io"><h3>Inputs (${a.inputs.length})</h3>${inputs || '<span class="muted">None</span>'}</div>
+    ${a.undeclared_reads.length ? `<div class="io"><h3>Undeclared reads (${a.undeclared_reads.length})</h3><p class="muted" style="margin:0">Opened by the code but not declared, so not linked.</p><div class="copies">${a.undeclared_reads.map((p) => `<div>${esc(p)}</div>`).join("")}</div></div>` : ""}
+    ${a.missing_inputs.length ? `<div class="io"><h3>Missing inputs (${a.missing_inputs.length})</h3><p class="muted" style="margin:0">Declared, but did not exist.</p><div class="copies">${a.missing_inputs.map((p) => `<div>${esc(p)}</div>`).join("")}</div></div>` : ""}
     <div class="io"><h3>Outputs (${a.outputs.length})</h3>${outputs || '<span class="muted">None</span>'}</div>
     ${consumers.length ? `<div class="io"><h3>Used by</h3><div>${[...new Set(consumers)].map((c) => `<button class="linkbtn" data-act="${esc(c)}">${esc(acts[c].stage)} ${esc(short(c))}</button>`).join(" · ")}</div></div>` : ""}
     <div class="io"><h3>Code</h3>${git}<div class="copies">${files}</div><div class="muted">Python ${esc(a.python)} · ${Object.entries(a.packages).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(", ")}</div></div>
@@ -381,7 +391,12 @@ function traceView() {
   const down = downstream(id);
   const line = (r) => {
     const pad = "│ ".repeat(r.depth);
-    if (r.origin) return `<div class="row"><span class="indent">${pad}</span><span class="${r.origin.origin ? "origin" : ""}" style="${r.origin.origin ? "" : "color:var(--err)"}">${r.origin.origin ? "origin" : "changed after written"} · <span class="mono">${esc(r.origin.path)}</span></span></div>`;
+    if (r.origin) {
+      const o = r.origin;
+      const label = o.origin ? "origin" : o.ambiguous.length ? `same content as ${o.ambiguous.join(", ")}` : "changed after written";
+      const color = o.origin ? "" : o.ambiguous.length ? "color:var(--warn)" : "color:var(--err)";
+      return `<div class="row"><span class="indent">${pad}</span><span class="${o.origin ? "origin" : ""}" style="${color}">${esc(label)} · <span class="mono">${esc(o.path)}</span></span></div>`;
+    }
     const a = acts[r.id];
     const fl = a.flags.filter((f) => f.level !== "info").map((f) => `<span class="pill ${f.level === "warn" ? "warn" : "error"}">${esc(f.code)}</span>`).join(" ");
     return `<div class="row"><span class="indent">${pad}</span><span><button class="linkbtn" data-act="${esc(r.id)}">${esc(a.stage)} ${esc(short(r.id))}</button> <span class="pill ${esc(a.status)}">${esc(a.status)}</span> <span class="mono muted">${params(a)}</span> ${r.again ? '<span class="muted">(shown above)</span>' : fl}</span></div>`;
@@ -407,6 +422,10 @@ const CHECK_TEXT = {
   "undeclared-write": "The code wrote a file it did not declare as an output.",
   "subprocess": "The step ran another program; what that program read and wrote is only known from declarations.",
   "changed-on-disk": "An output on disk no longer matches what the step wrote.",
+  "ambiguous-input": "An input has the same content as outputs of unrelated steps, or too little content to tell; it is not linked to any of them.",
+  "incomplete": "The step never recorded an end: it is still running, or was killed without warning.",
+  "missing-input": "A declared input did not exist.",
+  "untracked-workers": "The step started worker processes; what they read and wrote is only known from declarations.",
 };
 function checksView() {
   const all = [];
