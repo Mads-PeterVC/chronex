@@ -47,6 +47,15 @@ with messages it understood. The problems were elsewhere:
   figure and lists undeclared reads.
 - The README gained an install line, a worked example with real output, and the checks.
 
+**Second round:** a fresh agent with the same brief ran against the changes. Every scenario
+above now behaved, and `check` passed once a mistake was fixed by re-running. It found that
+`show`, `check --target` and `report` still found a file's producers by hash alone, so an
+identical re-run pulled old runs and their flags into the lineage, and a tiny file was
+attributed to an unrelated step. They now look files up by the linking rules. It also found
+that `chronex run` left its command running on SIGTERM, ran `--in a b`'s `b` as the command,
+and recorded `python script.py` as two steps; that a named decorator dropped its parameters;
+and that code piped to `python -` was silently not recorded. All are fixed.
+
 **Next:**
 
 - A persistent hash cache, and where to keep it on a cluster.
