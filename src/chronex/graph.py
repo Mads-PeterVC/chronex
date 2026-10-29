@@ -433,8 +433,8 @@ def _check_record(
             Flag(
                 "warn",
                 "untracked-workers",
-                f"started {record['observed']['workers']} worker process(es); what they read "
-                "and wrote is only known from declarations",
+                "started worker processes (multiprocessing, concurrent.futures, os.fork); what "
+                "they read and wrote is only known from declarations",
             )
         )
     if record["observed"]["subprocesses"]:

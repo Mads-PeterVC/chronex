@@ -93,10 +93,11 @@ def test_worker_processes_are_flagged(workdir: Path) -> None:
     Path("secret").write_text("s")
     with chronex.step("parallel") as s:
         context = multiprocessing.get_context("spawn")
-        with ProcessPoolExecutor(1, mp_context=context) as pool:
-            assert list(pool.map(read_secret, [str(workdir / "secret")])) == ["s"]
+        with ProcessPoolExecutor(2, mp_context=context) as pool:
+            assert list(pool.map(read_secret, [str(workdir / "secret")] * 4)) == ["s"] * 4
         Path(s.output("out")).write_text("x")
-    assert only_record(workdir)["observed"]["workers"] >= 1
+    # Two workers; multiprocessing's resource tracker is not one.
+    assert only_record(workdir)["observed"]["workers"] == 2
     assert flag_codes(workdir) == ["untracked-workers"]
 
 

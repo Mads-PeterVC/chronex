@@ -93,6 +93,11 @@ def _absolute(path: Any) -> str | None:
     return str(os.path.abspath(os.fspath(path)))
 
 
+def _helper(argv: Any) -> bool:
+    """Whether a started process is multiprocessing's own resource tracker, not a worker."""
+    return any("multiprocessing.resource_tracker" in str(arg) for arg in argv or ())
+
+
 def _hook(event: str, args: tuple[Any, ...]) -> None:
     global _popen_pending
     if not _listeners or _guard.active():
@@ -120,6 +125,8 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
     elif event in _PROCESS_EVENTS:
         if _popen_pending:
             _popen_pending = False
+            return
+        if event == "_posixsubprocess.fork_exec" and _helper(args[1]):
             return
         kind, path = "worker", event
     else:
