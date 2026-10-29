@@ -114,3 +114,21 @@ def test_a_generator_cannot_be_a_step() -> None:
 
     with pytest.raises(TypeError, match="block"):
         chronex.step(numbers)
+
+
+def test_large_arguments_are_summarised(workdir: Path) -> None:
+    np = pytest.importorskip("numpy")
+
+    @chronex.step
+    def total(values: object, numbers: list[int], target: Out[Path]) -> None:
+        target.write_text("done")
+
+    total(np.zeros((400, 500)), list(range(1000)), Path("t"))
+    (record,) = records(workdir)
+    assert Path(record["_file"]).stat().st_size < 20_000
+    assert record["params"]["values"]["shape"] == [400, 500]
+    assert record["params"]["values"]["dtype"] == "float64"
+    assert record["params"]["numbers"]["len"] == 1000
+    small = np.arange(3)
+    total(small, [1, 2], Path("t"))
+    assert {r["params"]["numbers"] == [1, 2] for r in records(workdir)} == {True, False}
