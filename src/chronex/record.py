@@ -9,6 +9,7 @@ without finishing it. SIGTERM (a Slurm time limit) finishes open steps as failed
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -52,6 +53,21 @@ def _catch_sigterm() -> None:
         return
     if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
         signal.signal(signal.SIGTERM, _on_sigterm)
+
+
+def _forget_in_child() -> None:
+    """A forked child inherits the parent's open steps, which are the parent's to finish."""
+    for step in _stack:
+        step._open = False
+        audit.unlisten(step._listen)
+    _stack.clear()
+    if signal.getsignal(signal.SIGTERM) is _on_sigterm:
+        with contextlib.suppress(ValueError):  # not the main thread
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_forget_in_child)
 
 
 def _release_sigterm() -> None:
@@ -155,6 +171,7 @@ class Step:
         self._first_read: set[str] = set()  # read before the step wrote them
         self._overwritten: dict[str, dict[str, Any]] = {}  # identity when first rewritten
         self.subprocesses: list[str] = []
+        self.workers = 0
         self.status = "running"
         self.error: str | None = None
         self.cwd = os.getcwd()
@@ -202,6 +219,8 @@ class Step:
             if first and os.path.isfile(value):
                 self._overwritten[value] = identify(value)
             self.writes.setdefault(value)
+        elif kind == "worker":
+            self.workers += 1
         elif kind == "rename":
             source, target = value.split("\0")
             self.writes.pop(source, None)
@@ -312,6 +331,7 @@ class Step:
                 "reads": list(self.reads),
                 "writes": list(self.writes),
                 "subprocesses": self.subprocesses,
+                "workers": self.workers,
             },
             **checks,
             "code": code_identity(self.function_file),

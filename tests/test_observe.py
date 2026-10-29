@@ -80,3 +80,46 @@ def test_a_renamed_temporary_file_records_its_final_name(workdir: Path) -> None:
     record = only_record(workdir)
     assert record["observed"]["writes"] == [str(workdir / "result.json")]
     assert record["undeclared_writes"] == []
+
+
+def read_secret(path: str) -> str:
+    return Path(path).read_text()
+
+
+def test_worker_processes_are_flagged(workdir: Path) -> None:
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    Path("secret").write_text("s")
+    with chronex.step("parallel") as s:
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(1, mp_context=context) as pool:
+            assert list(pool.map(read_secret, [str(workdir / "secret")])) == ["s"]
+        Path(s.output("out")).write_text("x")
+    assert only_record(workdir)["observed"]["workers"] >= 1
+    assert flag_codes(workdir) == ["untracked-workers"]
+
+
+def test_subprocesses_are_not_workers(workdir: Path) -> None:
+    import subprocess
+
+    with chronex.step("shell"):
+        subprocess.run(["true"], check=True)
+    record = only_record(workdir)
+    assert record["observed"]["workers"] == 0
+    assert record["observed"]["subprocesses"] == ["true"]
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
+def test_a_forked_child_does_not_inherit_open_steps(workdir: Path) -> None:
+    import signal
+
+    with chronex.step("parent"):
+        pid = os.fork()
+        if pid == 0:
+            inherited = chronex.current() is not None
+            handler = signal.getsignal(signal.SIGTERM) is not signal.SIG_DFL
+            Path("child").write_text(f"{inherited} {handler}")
+            os._exit(0)
+        os.waitpid(pid, 0)
+    assert Path("child").read_text() == "False False"

@@ -20,11 +20,15 @@ from typing import Any
 
 from chronex import _guard
 
-# (kind, value): kind is read, write, subprocess, or rename with value "source\0target".
+# (kind, value): kind is read, write, subprocess, worker, or rename with value
+# "source\0target".
 Listener = Callable[[str, str], None]
 
 _listeners: list[Listener] = []
 _installed = False
+# Process starts that are not subprocess.Popen: multiprocessing, concurrent.futures, os.fork.
+_PROCESS_EVENTS = {"os.fork", "os.forkpty", "os.posix_spawn", "_posixsubprocess.fork_exec"}
+_popen_pending = False  # subprocess.Popen raises its own event before starting the process
 _WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 _IGNORED_SUFFIXES = (".py", ".pyc", ".pyi", ".so", ".pyd", ".pth", ".dylib")
 # Files shephex keeps in <experiment>/shephex/ about the run itself.
@@ -90,6 +94,7 @@ def _absolute(path: Any) -> str | None:
 
 
 def _hook(event: str, args: tuple[Any, ...]) -> None:
+    global _popen_pending
     if not _listeners or _guard.active():
         return
     if event == "open":
@@ -110,7 +115,13 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
             return
         kind, path = "rename", f"{source}\0{target}"
     elif event == "subprocess.Popen":
+        _popen_pending = True
         kind, path = "subprocess", " ".join(map(str, args[1] if args[1] else [args[0]]))
+    elif event in _PROCESS_EVENTS:
+        if _popen_pending:
+            _popen_pending = False
+            return
+        kind, path = "worker", event
     else:
         return
     with _guard.quiet():

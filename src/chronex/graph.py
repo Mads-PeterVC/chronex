@@ -314,6 +314,15 @@ def _check_record(
         )
     for path in record.get("missing_outputs", []):
         flags.append(Flag("error", "missing-output", f"declared output {path} was not written"))
+    if record["observed"].get("workers"):
+        flags.append(
+            Flag(
+                "warn",
+                "untracked-workers",
+                f"started {record['observed']['workers']} worker process(es); what they read "
+                "and wrote is only known from declarations",
+            )
+        )
     if record["observed"]["subprocesses"]:
         commands = "; ".join(record["observed"]["subprocesses"])[:120]
         flags.append(
