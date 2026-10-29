@@ -37,16 +37,22 @@ def file_sha256(path: str | os.PathLike[str]) -> str:
 MAX_LISTED_FILES = 2000
 
 
-def tree_sha256(path: str | os.PathLike[str]) -> tuple[str, int, dict[str, str]]:
-    """Identity, total size and per-file hashes of a directory tree (``.chronex`` excluded)."""
+def tree_sha256(
+    path: str | os.PathLike[str],
+) -> tuple[str, int, dict[str, str], dict[str, int]]:
+    """Identity, total size, and per-file hashes and sizes of a directory tree.
+
+    ``.chronex`` is excluded.
+    """
     root = Path(path)
     files = {}
-    size = 0
+    sizes = {}
     for file in sorted(p for p in root.rglob("*") if p.is_file() and ".chronex" not in p.parts):
-        files[file.relative_to(root).as_posix()] = file_sha256(file)
-        size += file.stat().st_size
+        rel = file.relative_to(root).as_posix()
+        files[rel] = file_sha256(file)
+        sizes[rel] = file.stat().st_size
     lines = "\n".join(f"{rel}\0{sha}" for rel, sha in files.items())
-    return hashlib.sha256(lines.encode()).hexdigest(), size, files
+    return hashlib.sha256(lines.encode()).hexdigest(), sum(sizes.values()), files, sizes
 
 
 def identify(path: str | os.PathLike[str]) -> dict[str, object]:
@@ -65,9 +71,10 @@ def identify(path: str | os.PathLike[str]) -> dict[str, object]:
             "mtime_ns": stat.st_mtime_ns,
         }
     if p.is_dir():
-        sha, size, files = tree_sha256(p)
+        sha, size, files, sizes = tree_sha256(p)
         entry: dict[str, object] = {"kind": "dir", "sha": sha, "size": size}
         if len(files) <= MAX_LISTED_FILES:
             entry["files"] = files
+            entry["sizes"] = sizes
         return entry
     return {"kind": "missing", "sha": None, "size": None}

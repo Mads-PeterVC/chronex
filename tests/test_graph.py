@@ -211,3 +211,34 @@ def test_report_creates_its_directory(workdir: Path) -> None:
     html = Path("deep/er/report.html").read_text()
     assert html.startswith("<!doctype html>")
     assert "fonts.googleapis" not in html
+
+
+def test_a_directory_input_links_to_the_steps_that_wrote_its_files(workdir: Path) -> None:
+    Path("fits").mkdir()
+    for i in range(2):
+        make(Path(f"fits/run-{i}.json"), f"a fit result, long enough to link by content: {i}")
+
+    @chronex.step
+    def aggregate(fits: In[Path], summary: Out[Path]) -> None:
+        summary.write_text("".join(p.read_text() for p in sorted(fits.iterdir())))
+
+    aggregate(Path("fits"), Path("summary.txt"))
+    graph = graphs.build(graphs.load(workdir))
+    (record,) = [r for r in graph.records.values() if r["name"] == "aggregate"]
+    assert [i["rel"] for i in record["inputs"]] == ["fits/run-0.json", "fits/run-1.json"]
+    producers = {graph.records[lk.producer]["name"] for lk in graph.links[record["id"]]}
+    assert producers == {"make"}
+    assert codes(graph) == {}
+
+
+def test_a_directory_of_raw_files_stays_one_origin(workdir: Path) -> None:
+    Path("raw").mkdir()
+    for i in range(3):
+        Path(f"raw/{i}.dat").write_text(str(i))
+    with chronex.step("ingest") as s:
+        s.input("raw")
+        Path(s.output("out")).write_text("x")
+    graph = graphs.build(graphs.load(workdir))
+    (record,) = graph.records.values()
+    assert [i["rel"] for i in record["inputs"]] == ["raw"]
+    assert graph.links[record["id"]][0].origin

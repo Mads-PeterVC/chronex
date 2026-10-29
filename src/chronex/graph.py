@@ -243,6 +243,8 @@ def build(records: list[Record]) -> Graph:
         for out in record["outputs"]:
             if out["sha"]:
                 artifacts[out["sha"]]["size"] = out["size"]
+    for record in records:
+        record["inputs"] = _expand(record["inputs"], produced)
         for inp in record["inputs"]:
             if inp["sha"]:
                 locate(inp["sha"], inp["size"], inp["kind"], inp["path"], "input", record["id"])
@@ -267,6 +269,40 @@ def build(records: list[Record]) -> Graph:
         _check_record(record, graph, writers, failed_parents)
     _check_mixed(graph, writers)
     return graph
+
+
+def _expand(inputs: list[dict[str, Any]], produced: dict[str, Any]) -> list[dict[str, Any]]:
+    """Split a directory input into its files, if steps wrote them one by one.
+
+    A directory written as a whole by one step links as it is. One whose files were written
+    by separate steps (``fits/`` filled by one fit per dataset) links through its files. A
+    directory of files no step wrote stays one origin input.
+    """
+    expanded = []
+    for inp in inputs:
+        files = inp.get("files") or {}
+        if (
+            inp["kind"] != "dir"
+            or inp["sha"] in produced
+            or not any(sha in produced for sha in files.values())
+        ):
+            expanded.append(inp)
+            continue
+        sizes = inp.get("sizes") or {}
+        for rel, sha in files.items():
+            expanded.append(
+                {
+                    "path": os.path.join(inp["path"], rel),
+                    "rel": os.path.join(inp["rel"], rel),
+                    "param": inp["param"],
+                    "kind": "file",
+                    "sha": sha,
+                    "size": sizes.get(rel),
+                    "how": inp["how"],
+                    "directory": inp["path"],
+                }
+            )
+    return expanded
 
 
 def _input_shas(record: Record) -> set[str]:
@@ -298,7 +334,7 @@ def _resolve(
         # A step that read this content and wrote it again is a copy; copies of one original
         # are one source, and the latest copy is the producer.
         originals = {r["id"] for r, _ in candidates if sha not in _input_shas(r)}
-        trivial = (inp["size"] or 0) < TRIVIAL_BYTES
+        trivial = inp["size"] is not None and inp["size"] < TRIVIAL_BYTES
         if len(originals) <= 1 and not trivial:
             producer, path = max(candidates, key=lambda item: item[0]["ended"])
             return Link(producer=producer["id"], path=path, origin=False)
