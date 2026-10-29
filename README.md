@@ -57,7 +57,7 @@ with chronex.step("aggregate") as s:
 chronex run --name filter --in summary.csv --out top.csv -- \
     sh -c 'sort -t, -k2 -nr summary.csv | head -2 > top.csv'
 
-# Unmarked Python: every file it opens is recorded.
+# Unmarked Python: every file it opens is recorded, as a step named after the script.
 chronex run -- python plot.py
 ```
 
@@ -65,7 +65,7 @@ Then check the lineage, and show where the result came from:
 
 ```console
 $ chronex check
-10 steps, 8 linked inputs, 0 origin inputs, 0 flags
+9 current steps; 8 linked inputs, 0 origin files, 0 flags
 
 $ chronex show figure.txt
 plot [completed]  top.csv → figure.txt
@@ -80,8 +80,8 @@ Edit `summary.csv` by hand and re-run the last two steps, and `check` fails:
 
 ```console
 $ chronex check
-error modified-after-write   filter     954e2b9a  summary.csv differs from what aggregate wrote there (807ee04089… then, c13f4544bb… when read): changed without a record
-10 steps, 7 linked inputs, 0 origin inputs (3 not current, --history to show), 1 flags
+error modified-after-write   filter     3ef4f27c  summary.csv differs from what aggregate wrote there (807ee04089… then, c13f4544bb… when read): changed without a record
+9 current steps (2 older runs hidden, --history to show); 7 linked inputs, 0 origin files, 1 flag
 ```
 
 Re-run `aggregate.py` and the steps after it, and it passes again: the steps that used the
@@ -100,7 +100,13 @@ step upstream of it, and every flag.
 | Code you cannot change, shell tools | `chronex run [--in …] [--out …] -- cmd` | one step per command |
 
 `chronex.input(path)` and `chronex.output(path)` return `path`, work inside any of the above,
-and do nothing outside a step. Use them for files a signature cannot name in advance.
+and do nothing outside a step. Use them for files a signature cannot name in advance, and in
+helper modules: a config file read inside a library function is flagged `undeclared-read`
+until the function declares it with `chronex.input`. They do nothing in worker processes
+(multiprocessing), which belong to no step.
+
+A step is named after its function, its block's name, or its script (`inline` for
+`python -c`); `name=` or `--name` overrides that.
 
 ## Words
 
@@ -108,8 +114,10 @@ and do nothing outside a step. Use them for files a signature cannot name in adv
   lineage starts there.
 - **Current**: a step not redone by a later run. `check` looks only at current steps and
   their ancestry unless given `--history`.
-- **Ambiguous input**: its content matches outputs of unrelated steps, or is too small
-  (under 64 bytes) to identify. It is reported, but not linked.
+- **Ambiguous input**: an input found only at another path than the one its producer wrote,
+  whose content matches outputs of unrelated steps, or is too small (under 64 bytes) to
+  identify. It is reported, but not linked. A file read from the path a step wrote it to
+  always links, whatever its size.
 
 ## Checks
 
@@ -140,7 +148,11 @@ chronex report FILE [ROOTS…] [-o lineage.html]
 chronex run [--name N] [--in PATH…] [--out PATH…] [--watch DIR…] [-q] -- COMMAND…
 ```
 
-`ROOTS` defaults to the current directory; records are found anywhere below it. `check`
+`ROOTS` defaults to the current directory; records are found anywhere below it, so pass the
+directory above when the steps ran in several places. `show`, `report` and `--target` find a
+file's producer the way inputs are linked: the latest step that wrote that path, or the
+source of a copy. `--in`, `--out` and `--watch` take one or more paths; end them with `--`
+before the command. `check`
 exits 1 if it finds an error, or a warning with `--strict`, and 0 otherwise, so it can gate a
 pipeline or an agent's work. `--target FILE` checks only that file's lineage.
 

@@ -25,6 +25,10 @@ def _outside(graph: graphs.Graph, steps: set[str], roots: list[str]) -> int:
     )
 
 
+def _plural(n: int, word: str) -> str:
+    return word if n == 1 else f"{word}s"
+
+
 def _check(args: argparse.Namespace) -> int:
     graph = graphs.build(graphs.load(*args.roots))
     if args.target:
@@ -52,12 +56,21 @@ def _check(args: argparse.Namespace) -> int:
             prefix, reset = (COLORS[flag.level], "\033[0m") if color else ("", "")
             print(f"{prefix}{label}{reset}  {flag.text}")
         links = sum(1 for sid in scope for link in graph.links[sid] if link.producer)
-        origins = sum(1 for sid in scope for link in graph.links[sid] if link.origin)
+        origins = {
+            inp["path"]
+            for sid in scope
+            for inp, link in zip(graph.records[sid]["inputs"], graph.links[sid], strict=True)
+            if link.origin
+        }
         hidden = len(graph.records) - len(scope)
-        summary = f"{len(scope)} steps, {links} linked inputs, {origins} origin inputs"
+        current = "" if args.history or args.target else "current "
+        steps = f"{len(scope)} {current}steps"
         if hidden and not args.target:
-            summary += f" ({hidden} not current, --history to show)"
-        print(f"{summary}, {len(found)} flags")
+            steps += f" ({hidden} older {_plural(hidden, 'run')} hidden, --history to show)"
+        print(
+            f"{steps}; {links} linked {_plural(links, 'input')}, {len(origins)} origin "
+            f"{_plural(len(origins), 'file')}, {len(found)} {_plural(len(found), 'flag')}"
+        )
         outside = _outside(graph, scope, args.roots)
         if outside:
             inputs = "input" if outside == 1 else "inputs"

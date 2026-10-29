@@ -39,7 +39,7 @@ def test_a_mistake_fixed_by_rerunning_no_longer_fails_check(
     code, out = check(capsys=capsys)
     assert code == 0
     assert "modified-after-write" not in out
-    assert "2 not current" in out
+    assert "(2 older runs hidden, --history to show)" in out
     assert check("--history", capsys=capsys)[0] == 1
 
 
@@ -171,3 +171,13 @@ def test_content_written_elsewhere_is_not_a_files_lineage(
     code, out = show("tiny_out.txt", capsys)
     assert code == 1
     assert out == "tiny_out.txt has the same content as an output of make, too little to link\n"
+
+
+def test_the_summary_counts_origin_files_once(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Path("config").write_text("{}")
+    use(Path("config"), Path("a"))
+    use(Path("config"), Path("b"))
+    out = check(capsys=capsys)[1]
+    assert out.strip() == "2 current steps; 0 linked inputs, 1 origin file, 0 flags"
