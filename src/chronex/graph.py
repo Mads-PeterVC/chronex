@@ -57,6 +57,9 @@ class Graph:
     links: dict[str, list[Link]]
     flags: dict[str, list[Flag]]
     artifacts: dict[str, dict[str, Any]]
+    # Who wrote each content (sha) and each (host, path): how inputs and files are resolved.
+    produced: dict[str, list[tuple[Record, str]]] = field(default_factory=dict)
+    writers: dict[tuple[str, str], list[tuple[Record, str]]] = field(default_factory=dict)
 
     def ancestry(self, step_id: str) -> set[str]:
         seen: set[str] = set()
@@ -110,6 +113,12 @@ class Graph:
         absolute = os.path.abspath(path)
         if not os.path.exists(absolute):
             return f"{path} does not exist"
+        link = self.locate(absolute)
+        if link and link.ambiguous:
+            names = ", ".join(sorted({self.records[a]["name"] for a in link.ambiguous}))
+            if os.path.getsize(absolute) < TRIVIAL_BYTES:
+                return f"{path} has the same content as an output of {names}, too little to link"
+            return f"{path} has the same content as outputs of unrelated steps ({names})"
         host = socket.gethostname()
         wrote = [
             r
@@ -131,15 +140,21 @@ class Graph:
             return f"no recorded step wrote {path}; it is an origin input of {', '.join(readers)}"
         return f"no recorded step wrote or read {path}"
 
+    def locate(self, path: str | os.PathLike[str]) -> Link | None:
+        """Resolve a local file as if a step read it now: by the rules inputs are linked by."""
+        absolute = os.path.abspath(path)
+        info = identify(absolute)
+        if info["sha"] is None:
+            return None
+        reader: Record = {"id": "", "started": "9999", "env": {"host": socket.gethostname()}}
+        read = {"path": absolute, "rel": os.fspath(path), "sha": info["sha"], "size": info["size"]}
+        return _resolve(reader, read, self.produced, self.writers, defaultdict(list))
+
     def producers_of(self, path: str | os.PathLike[str]) -> list[str]:
-        """Steps that wrote the current content of a local file."""
-        info = identify(path)
-        entry = self.artifacts.get(str(info["sha"]))
-        return (
-            sorted({loc["step"] for loc in entry["locations"] if loc["role"] == "output"})
-            if entry
-            else []
-        )
+        """The step that wrote the current content of a local file: its latest writer, or the
+        single source of a copy. Empty if none did, or if that is ambiguous."""
+        link = self.locate(path)
+        return [link.producer] if link and link.producer else []
 
     def all_flags(self) -> list[tuple[str, Flag]]:
         order = {level: i for i, level in enumerate(LEVELS)}
@@ -239,7 +254,14 @@ def build(records: list[Record]) -> Graph:
             _resolve(record, inp, produced, writers, flags) for inp in record["inputs"]
         ]
 
-    graph = Graph(records=by_id, links=links, flags=flags, artifacts=artifacts)
+    graph = Graph(
+        records=by_id,
+        links=links,
+        flags=flags,
+        artifacts=artifacts,
+        produced=produced,
+        writers=writers,
+    )
     failed_parents = {r["parent"] for r in records if r["status"] == "failed" and r["parent"]}
     for record in records:
         _check_record(record, graph, writers, failed_parents)

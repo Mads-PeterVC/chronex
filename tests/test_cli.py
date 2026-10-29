@@ -145,3 +145,29 @@ def test_report_embeds_the_figure_and_lists_hidden_reads(
     assert data["image"].startswith("data:image/png;base64,")
     (act,) = data["acts"].values()
     assert act["undeclared_reads"] == ["config.json"]
+
+
+def test_an_identical_rerun_replaces_the_old_lineage(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Path("hidden").write_text("x")
+    make(Path("a"), "the same content from both runs of make, long enough to link")
+    with chronex.step("first") as s:
+        Path("hidden").read_text()  # a flag on the old run only
+        Path(s.output("b")).write_text(Path(s.input("a")).read_text())
+    use(Path("a"), Path("c"))
+    with chronex.step("first") as s:
+        Path(s.output("b")).write_text(Path(s.input("a")).read_text())
+    code, out = show("b", capsys)
+    assert code == 0 and out.count("first [") == 1
+    assert check("--target", "b", "--strict", capsys=capsys)[0] == 0
+
+
+def test_content_written_elsewhere_is_not_a_files_lineage(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make(Path("count.txt"), "123")
+    Path("tiny_out.txt").write_text("123")
+    code, out = show("tiny_out.txt", capsys)
+    assert code == 1
+    assert out == "tiny_out.txt has the same content as an output of make, too little to link\n"

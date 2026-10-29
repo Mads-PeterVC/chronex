@@ -40,6 +40,7 @@ Path(chronex.output(f"data/run-{seed}.csv")).write_text(...)
 @chronex.step
 def fit(data: In[Path], result: Out[Path], scale: float = 1.0) -> None: ...
 
+
 for seed in range(3):
     fit(Path(f"data/run-{seed}.csv"), Path(f"fits/run-{seed}.json"))
 ```
