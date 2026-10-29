@@ -1,0 +1,307 @@
+"""Link records into a lineage graph and check it.
+
+No step knows about any other. Steps are linked afterwards: an input is produced by the step
+that wrote a file with the same hash. Copies (collecting, staging, rsync) are therefore
+transparent, and the checks below look for the ways a chain of steps goes wrong.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from chronex.hashing import identify
+from chronex.record import RECORD_DIR
+
+Record = dict[str, Any]
+
+LEVELS = ("error", "warn", "info")
+
+
+@dataclass
+class Flag:
+    level: str  # error, warn or info
+    code: str
+    text: str
+    refs: list[str] = field(default_factory=list)  # ids of related steps
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"level": self.level, "code": self.code, "text": self.text, "refs": self.refs}
+
+
+@dataclass
+class Link:
+    """How one input of a step was resolved."""
+
+    producer: str | None  # id of the step that wrote this content, if any
+    path: str | None  # where the producer wrote it
+    origin: bool  # no step wrote this content or this path: it enters the graph here
+
+
+@dataclass
+class Graph:
+    records: dict[str, Record]
+    links: dict[str, list[Link]]
+    flags: dict[str, list[Flag]]
+    artifacts: dict[str, dict[str, Any]]
+
+    def ancestry(self, step_id: str) -> set[str]:
+        seen: set[str] = set()
+        todo = [step_id]
+        while todo:
+            current = todo.pop()
+            for link in self.links.get(current, []):
+                if link.producer and link.producer not in seen:
+                    seen.add(link.producer)
+                    todo.append(link.producer)
+        return seen
+
+    def producers_of(self, path: str | os.PathLike[str]) -> list[str]:
+        """Steps that wrote the current content of a local file."""
+        info = identify(path)
+        entry = self.artifacts.get(str(info["sha"]))
+        return (
+            sorted({loc["step"] for loc in entry["locations"] if loc["role"] == "output"})
+            if entry
+            else []
+        )
+
+    def all_flags(self) -> list[tuple[str, Flag]]:
+        order = {level: i for i, level in enumerate(LEVELS)}
+        found = [(sid, f) for sid, flags in self.flags.items() for f in flags]
+        return sorted(found, key=lambda x: (order[x[1].level], self.records[x[0]]["started"]))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "records": self.records,
+            "links": {
+                k: [{"producer": lk.producer, "path": lk.path, "origin": lk.origin} for lk in v]
+                for k, v in self.links.items()
+            },
+            "flags": {k: [f.to_dict() for f in v] for k, v in self.flags.items()},
+            "artifacts": self.artifacts,
+        }
+
+
+def load(*roots: str | os.PathLike[str]) -> list[Record]:
+    """Every record below the given directories."""
+    records = []
+    for root in roots:
+        for path in sorted(Path(root).rglob(f"{RECORD_DIR}/*.json")):
+            record = json.loads(path.read_text())
+            if record.get("schema", "").startswith("chronex/"):
+                record["_file"] = str(path)
+                records.append(record)
+    return records
+
+
+def _host(record: Record) -> str:
+    return str(record.get("env", {}).get("host", ""))
+
+
+def _outputs(record: Record) -> list[tuple[str, str, str]]:
+    """(path, sha, kind) of every output, including the files inside output directories."""
+    found = []
+    for out in record["outputs"]:
+        if out["sha"] is None:
+            continue
+        found.append((out["path"], out["sha"], out["kind"]))
+        for rel, sha in (out.get("files") or {}).items():
+            found.append((os.path.join(out["path"], rel), sha, "file"))
+    return found
+
+
+def build(records: list[Record]) -> Graph:
+    by_id = {r["id"]: r for r in records}
+    artifacts: dict[str, dict[str, Any]] = {}
+    produced: dict[str, list[tuple[Record, str]]] = defaultdict(list)
+    writers: dict[tuple[str, str], list[tuple[Record, str]]] = defaultdict(list)
+
+    def locate(sha: str, size: Any, kind: str, path: str, role: str, step: str) -> None:
+        entry = artifacts.setdefault(sha, {"sha": sha, "size": size, "kind": kind, "locations": []})
+        location = {"path": path, "role": role, "step": step}
+        if location not in entry["locations"]:
+            entry["locations"].append(location)
+
+    for record in records:
+        for path, sha, kind in _outputs(record):
+            produced[sha].append((record, path))
+            writers[_host(record), path].append((record, sha))
+            locate(sha, None, kind, path, "output", record["id"])
+        for out in record["outputs"]:
+            if out["sha"]:
+                artifacts[out["sha"]]["size"] = out["size"]
+        for inp in record["inputs"]:
+            if inp["sha"]:
+                locate(inp["sha"], inp["size"], inp["kind"], inp["path"], "input", record["id"])
+
+    links: dict[str, list[Link]] = {}
+    flags: dict[str, list[Flag]] = defaultdict(list)
+    for record in records:
+        links[record["id"]] = [
+            _resolve(record, inp, produced, writers, flags) for inp in record["inputs"]
+        ]
+
+    graph = Graph(records=by_id, links=links, flags=flags, artifacts=artifacts)
+    for record in records:
+        _check_record(record, graph, writers)
+    _check_mixed(graph, writers)
+    return graph
+
+
+def _resolve(
+    record: Record,
+    inp: dict[str, Any],
+    produced: dict[str, list[tuple[Record, str]]],
+    writers: dict[tuple[str, str], list[tuple[Record, str]]],
+    flags: dict[str, list[Flag]],
+) -> Link:
+    sid, started, host = record["id"], record["started"], _host(record)
+    candidates = [(r, p) for r, p in produced.get(inp["sha"] or "", []) if r["id"] != sid]
+    if candidates:
+        # Prefer a producer that finished before this step started and wrote this very path,
+        # and among those the most recent.
+        def rank(item: tuple[Record, str]) -> tuple[bool, bool, str]:
+            r, p = item
+            return (r["ended"] <= started, _host(r) == host and p == inp["path"], r["ended"])
+
+        producer, path = max(candidates, key=rank)
+        return Link(producer=producer["id"], path=path, origin=False)
+    earlier = [(r, sha) for r, sha in writers.get((host, inp["path"]), []) if r["id"] != sid]
+    if earlier and inp["sha"]:
+        writer, sha = max(earlier, key=lambda item: item[0]["ended"])
+        flags[sid].append(
+            Flag(
+                "error",
+                "modified-after-write",
+                f"{inp['rel']} differs from what {writer['name']} wrote there "
+                f"({sha[:10]}… then, {inp['sha'][:10]}… when read): changed without a record",
+                [writer["id"]],
+            )
+        )
+        return Link(producer=None, path=None, origin=False)
+    return Link(producer=None, path=None, origin=True)
+
+
+def _check_record(
+    record: Record, graph: Graph, writers: dict[tuple[str, str], list[tuple[Record, str]]]
+) -> None:
+    sid = record["id"]
+    flags = graph.flags[sid]
+    if record["status"] == "failed":
+        flags.append(Flag("warn", "failed", f"step failed: {record.get('error')}"))
+    for inp, link in zip(record["inputs"], graph.links[sid], strict=True):
+        if not link.producer:
+            continue
+        producer = graph.records[link.producer]
+        if producer["status"] != "completed":
+            flags.append(
+                Flag(
+                    "warn",
+                    "failed-producer",
+                    f"{inp['rel']} comes from a {producer['status']} run of {producer['name']}",
+                    [producer["id"]],
+                )
+            )
+        later = [
+            r
+            for r, sha in writers.get((_host(producer), link.path or ""), [])
+            if sha != inp["sha"] and r["ended"] > producer["ended"]
+        ]
+        if later:
+            newest = max(later, key=lambda r: r["ended"])
+            flags.append(
+                Flag(
+                    "warn",
+                    "superseded-input",
+                    f"{inp['rel']} is the version {producer['name']} wrote at "
+                    f"{producer['ended'][11:19]}; {newest['name']} rewrote "
+                    f"{os.path.basename(link.path or '')} at {newest['ended'][11:19]}",
+                    [producer["id"], newest["id"]],
+                )
+            )
+    for path in record.get("undeclared_reads", []):
+        flags.append(
+            Flag(
+                "warn",
+                "undeclared-read",
+                f"read {os.path.relpath(path, record['cwd'])} without declaring it",
+            )
+        )
+    for path in record.get("undeclared_writes", []):
+        flags.append(
+            Flag(
+                "info",
+                "undeclared-write",
+                f"wrote {os.path.relpath(path, record['cwd'])} without declaring it",
+            )
+        )
+    for path in record.get("missing_outputs", []):
+        flags.append(Flag("error", "missing-output", f"declared output {path} was not written"))
+    if record["observed"]["subprocesses"]:
+        commands = "; ".join(record["observed"]["subprocesses"])[:120]
+        flags.append(
+            Flag(
+                "info",
+                "subprocess",
+                f"ran `{commands}`: what it read and wrote is only known from declarations",
+            )
+        )
+    if _host(record) == socket.gethostname():
+        for out in record["outputs"]:
+            if out["sha"] and os.path.exists(out["path"]):
+                now = identify(out["path"])["sha"]
+                if now != out["sha"]:
+                    flags.append(
+                        Flag(
+                            "info",
+                            "changed-on-disk",
+                            f"{out['rel']} has changed since this step wrote it",
+                        )
+                    )
+
+
+def _check_mixed(graph: Graph, writers: dict[tuple[str, str], list[tuple[Record, str]]]) -> None:
+    """Flag the step where two versions of the same file, written by re-runs, first meet."""
+    memo: dict[str, dict[tuple[str, str], set[str]]] = {}
+
+    def versions(sid: str) -> dict[tuple[str, str], set[str]]:
+        """Versions of each path written by this step and everything upstream of it."""
+        if sid not in memo:
+            found: dict[tuple[str, str], set[str]] = defaultdict(set)
+            record = graph.records[sid]
+            for path, sha, _ in _outputs(record):
+                found[_host(record), path].add(sha)
+            for link in graph.links[sid]:
+                if link.producer:
+                    for key, shas in versions(link.producer).items():
+                        found[key] |= shas
+            memo[sid] = found
+        return memo[sid]
+
+    for sid, record in graph.records.items():
+        producers = {lk.producer for lk in graph.links[sid] if lk.producer}
+        upstream: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for p in producers:
+            for key, shas in versions(p).items():
+                upstream[key] |= shas
+        mixed = []
+        for key, shas in upstream.items():
+            if len(shas) > 1 and not any(versions(p).get(key, set()) >= shas for p in producers):
+                mixed.append(key[1])
+        if mixed:
+            names = ", ".join(sorted(os.path.relpath(p, record["cwd"]) for p in mixed))
+            flags = graph.flags[sid]
+            flags.append(
+                Flag(
+                    "warn",
+                    "mixed-lineage",
+                    f"inputs descend from different versions of {names}",
+                    sorted({r["id"] for m in mixed for r, _ in writers[(_host(record), m)]}),
+                )
+            )

@@ -1,0 +1,430 @@
+<title>Lineage</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a lineage ladder (the result on top, origins at the bottom) beside an inspector for the selected step. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --sunk: #eceff3; --ink: #17212c; --muted: #5a6674; --line: #d9dfe6;
+  --accent: #2348b8; --accent-soft: #e3e9fb;
+  --ok: #1d7a4c; --ok-soft: #e1f2e9; --warn: #9a5c00; --warn-soft: #fbefd9; --err: #b42318; --err-soft: #fde5e2;
+  --bound: #6f7b89;
+  --display: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1319; --surface: #161d25; --sunk: #1c2530; --ink: #e5eaf0; --muted: #96a2af; --line: #2a3541;
+  --accent: #93abff; --accent-soft: #1f2b4d;
+  --ok: #55c892; --ok-soft: #15301f; --warn: #f0b350; --warn-soft: #33270f; --err: #ff8577; --err-soft: #3a1a17;
+  --bound: #8794a3; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #161d25; --sunk: #1c2530; --ink: #e5eaf0; --muted: #96a2af; --line: #2a3541;
+  --accent: #93abff; --accent-soft: #1f2b4d;
+  --ok: #55c892; --ok-soft: #15301f; --warn: #f0b350; --warn-soft: #33270f; --err: #ff8577; --err-soft: #3a1a17;
+  --bound: #8794a3; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 28px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+h2 { font-size: 19px; font-weight: 700; }
+h3 { font-size: 15px; font-weight: 600; font-family: var(--body); }
+.eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); font-weight: 600; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: grid; gap: 10px; }
+header.top p { margin: 0; max-width: 72ch; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--sunk); color: var(--ink); white-space: nowrap; }
+.chip b { font-variant-numeric: tabular-nums; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.err { background: var(--err-soft); color: var(--err); }
+.chip.info { background: var(--accent-soft); color: var(--accent); }
+.chip.bound { background: transparent; border: 1px dashed var(--bound); color: var(--bound); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* Ladder */
+.ladder { display: grid; gap: 0; }
+.layer { display: flex; flex-wrap: wrap; gap: 8px; }
+.layer > * { flex: 1 1 170px; min-width: 0; }
+.node { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; position: relative; }
+.node:hover { border-color: var(--accent); }
+.node.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.node .name { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
+.node .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.node .bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; background: var(--sunk); }
+.node .bar span { display: block; height: 100%; }
+.node.boundary { border-style: dashed; border-color: var(--bound); background: transparent; }
+.node.boundary .name { color: var(--bound); }
+.node .flagdot { position: absolute; top: 9px; right: 10px; font-size: 11px; font-weight: 600; }
+.link { display: grid; gap: 2px; padding: 6px 0 6px 18px; margin-left: 14px; border-left: 2px solid var(--line); font-size: 12px; color: var(--muted); }
+.link .strength { font-weight: 600; }
+.link .strength.hash { color: var(--ok); }
+.link .strength.claim { color: var(--warn); }
+
+/* Inspector */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tabs button { background: none; border: 0; padding: 8px 12px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 500; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.toolbar input[type="search"], select { font: inherit; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.btn { border: 1px solid var(--line); background: var(--bg); padding: 5px 11px; border-radius: 6px; font-size: 13px; font-weight: 500; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.btn.primary:hover { color: var(--surface); opacity: 0.9; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; text-align: left; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; max-height: 560px; overflow-y: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--sunk); font-weight: 600; font-size: 11.5px; color: var(--muted); z-index: 1; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--sunk); }
+tr.sampled td { background: var(--accent-soft); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+.pill.completed, .pill.reproduced, .pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.failed, .pill.mismatch, .pill.error { background: var(--err-soft); color: var(--err); }
+.pill.submitted, .pill.unknown, .pill.warn, .pill.not-run { background: var(--warn-soft); color: var(--warn); }
+
+.record { display: grid; gap: 18px; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.flags { display: grid; gap: 6px; }
+.flag { display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.flag::before { content: ""; border-radius: 2px; background: var(--muted); }
+.flag.warn::before { background: var(--warn); }
+.flag.error::before { background: var(--err); }
+.flag.ok::before { background: var(--ok); }
+.flag.info::before { background: var(--accent); }
+.io { display: grid; gap: 10px; }
+.io-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 5px; min-width: 0; }
+.io-item .path { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.io-item .how { font-size: 12px; color: var(--muted); }
+.copies { display: grid; gap: 2px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.copies span.role { display: inline-block; min-width: 96px; margin-right: 6px; color: var(--ink); font-family: var(--body); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.origin { color: var(--bound); font-size: 12px; font-weight: 600; }
+.copy { background: none; border: 0; padding: 0 0 0 6px; color: var(--muted); font-size: 11px; }
+.copy:hover { color: var(--accent); }
+
+/* Trace */
+.trace { display: grid; gap: 0; }
+.tstep { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; }
+.tstep .rail { display: flex; flex-direction: column; align-items: center; }
+.tstep .rail .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent); background: var(--surface); margin-top: 12px; flex: none; }
+.tstep.art .rail .dot { border-radius: 2px; border-color: var(--muted); width: 10px; height: 10px; }
+.tstep.origin .rail .dot { border-style: dashed; border-color: var(--bound); }
+.tstep .rail .line { flex: 1; width: 2px; background: var(--line); }
+.tstep .body { padding: 6px 0 14px; min-width: 0; display: grid; gap: 3px; }
+.tstep .body .t { font-weight: 600; }
+
+.gaps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.gap { border-top: 2px solid var(--line); padding-top: 10px; display: grid; gap: 4px; }
+.gap .n { font-family: var(--display); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gap p { margin: 0; font-size: 13px; color: var(--muted); }
+footer { font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .node, .btn { transition: border-color .12s, color .12s; } }
+
+.tree { display: grid; gap: 2px; font-size: 13px; }
+.tree .row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.tree .indent { color: var(--line); font-family: var(--mono); white-space: pre; }
+.checks { display: grid; gap: 8px; }
+.check { display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 10px; }
+.check::before { content: ""; border-radius: 2px; background: var(--muted); }
+.check.error::before { background: var(--err); }
+.check.warn::before { background: var(--warn); }
+.check .who { font-size: 12px; color: var(--muted); }
+</style>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 id="title"></h1>
+    <p id="lede"></p>
+    <div class="chips" id="summary"></div>
+  </header>
+  <div class="layout">
+    <section aria-label="Lineage">
+      <div class="eyebrow" style="margin-bottom:10px">Lineage · result first, origins last</div>
+      <div class="ladder" id="ladder"></div>
+    </section>
+    <section class="panel" aria-label="Inspector">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-step" aria-selected="true">Step</button>
+        <button role="tab" id="tab-trace" aria-selected="false">Trace a run</button>
+        <button role="tab" id="tab-checks" aria-selected="false">Checks</button>
+      </div>
+      <div id="inspector"></div>
+    </section>
+  </div>
+  <footer id="foot"></footer>
+</div>
+<script>
+const D = /*DATA*/null;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const acts = D.acts, arts = D.arts;
+const stageOf = Object.fromEntries(D.stages.map((s) => [s.name, s]));
+const fmtTime = (t) => t ? t.slice(0, 19).replace("T", " ") : "—";
+const fmtSize = (b) => b == null ? "" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " kB" : b + " B";
+const short = (id) => id.slice(-8);
+const params = (a) => Object.entries(a.params).map(([k, v]) => `${esc(k)}=${esc(typeof v === "object" ? JSON.stringify(v) : v)}`).join(" · ");
+const STATE = { tab: "step", stage: null, act: null, flaggedOnly: false, q: "", sample: new Set(), trace: null };
+
+document.addEventListener("click", (e) => {
+  const c = e.target.closest("[data-copy]");
+  if (c) {
+    navigator.clipboard?.writeText(c.dataset.copy).then(() => { c.textContent = "copied"; setTimeout(() => (c.textContent = "copy"), 1200); }).catch(() => { c.textContent = "select it"; });
+    return;
+  }
+  const t = e.target.closest("[data-trace]");
+  if (t) { STATE.trace = t.dataset.trace; setTab("trace"); return; }
+  const go = e.target.closest("[data-act]");
+  if (go) { openAct(go.dataset.act); return; }
+  const st = e.target.closest("[data-stage]");
+  if (st) openStage(st.dataset.stage);
+});
+const copyBtn = (text) => `<button class="copy" data-copy="${esc(text)}" title="Copy path">copy</button>`;
+
+/* ---------- summary ---------- */
+function count(level) { return Object.values(acts).reduce((n, a) => n + a.flags.filter((f) => f.level === level).length, 0); }
+function summary() {
+  const ids = Object.keys(acts);
+  const hosts = new Set(ids.map((id) => acts[id].host));
+  let linked = 0, origins = 0, unmatched = 0;
+  ids.forEach((id) => acts[id].inputs.forEach((i) => (i.prod ? linked++ : i.origin ? origins++ : unmatched++)));
+  $("#eyebrow").textContent = `chronex · ${D.base}`;
+  $("#title").textContent = D.title;
+  $("#lede").innerHTML = `${ids.length} recorded steps on ${hosts.size} host${hosts.size > 1 ? "s" : ""} lead to <span class="mono">${esc(D.target)}</span>. Steps are linked where one step's output and another's input have the same SHA-256, so copies between folders and machines are followed automatically.`;
+  const e = count("error"), w = count("warn");
+  $("#summary").innerHTML = [
+    `<span class="chip ok"><b>${linked}</b> inputs linked to the step that wrote them</span>`,
+    `<span class="chip bound"><b>${origins}</b> origin inputs</span>`,
+    unmatched ? `<span class="chip err"><b>${unmatched}</b> inputs changed after they were written</span>` : "",
+    `<span class="chip ${e ? "err" : "ok"}"><b>${e}</b> errors</span>`,
+    `<span class="chip ${w ? "warn" : "ok"}"><b>${w}</b> warnings</span>`,
+  ].join("");
+  $("#foot").innerHTML = `Generated ${fmtTime(D.generated)} UTC by <span class="mono">chronex report</span>. Paths are relative to <span class="mono">${esc(D.base)}</span>.`;
+}
+
+/* ---------- ladder ---------- */
+function ladder() {
+  const layers = [];
+  D.stages.forEach((s) => (layers[s.depth] ??= []).push({ type: "stage", s }));
+  Object.entries(D.boundaries).forEach(([stage, groups]) => (layers[stageOf[stage].depth + 1] ??= []).push({ type: "origin", stage, groups }));
+  let html = "";
+  layers.forEach((layer, d) => {
+    if (!layer) return;
+    if (d > 0) {
+      const into = D.edges.filter((e) => stageOf[e.from].depth === d);
+      html += `<div class="link">` + into.map((e) => `<div><span class="strength hash">↑ ${e.n} linked</span> ${esc(e.from)} → ${esc(e.to)}</div>`).join("")
+        + layer.filter((n) => n.type === "origin").map((o) => `<div><span class="strength" style="color:var(--bound)">↑ ${Object.values(o.groups).reduce((a, b) => a + b, 0)} origin</span> inputs of ${esc(o.stage)}</div>`).join("") + `</div>`;
+    }
+    html += `<div class="layer">` + layer.map((n) => (n.type === "stage" ? stageNode(n.s) : originNode(n))).join("") + `</div>`;
+  });
+  $("#ladder").innerHTML = html;
+}
+function stageNode(s) {
+  const runs = s.runs.map((id) => acts[id]);
+  const st = {};
+  runs.forEach((a) => (st[a.status] = (st[a.status] || 0) + 1));
+  const e = runs.reduce((n, a) => n + a.flags.filter((f) => f.level === "error").length, 0);
+  const w = runs.reduce((n, a) => n + a.flags.filter((f) => f.level === "warn").length, 0);
+  const color = { completed: "var(--ok)", failed: "var(--err)" };
+  const bar = Object.entries(st).map(([k, n]) => `<span style="width:${(100 * n) / runs.length}%;background:${color[k] || "var(--warn)"}" title="${n} ${esc(k)}"></span>`).join("");
+  const dot = e ? `<span class="flagdot" style="color:var(--err)">${e} error${e > 1 ? "s" : ""}</span>` : w ? `<span class="flagdot" style="color:var(--warn)">${w} warning${w > 1 ? "s" : ""}</span>` : "";
+  return `<button class="node ${STATE.stage === s.name ? "sel" : ""}" data-stage="${esc(s.name)}">${dot}
+    <span class="name">${esc(s.name)}</span>
+    <span class="meta"><span>${runs.length} run${runs.length > 1 ? "s" : ""}</span><span>${s.hosts.map(esc).join(", ")}</span></span>
+    <span class="bar">${bar}</span>
+    <span class="meta">${Object.entries(st).map(([k, n]) => `${n} ${esc(k)}`).join(" · ")}</span></button>`;
+}
+function originNode(o) {
+  const entries = Object.entries(o.groups);
+  return `<div class="node boundary"><span class="name">Origin inputs</span><span class="meta">read by ${esc(o.stage)}, written by no recorded step</span>
+    <span class="copies">${entries.slice(0, 6).map(([g, n]) => `<span>${n > 1 ? n + "× " : ""}${esc(g)}</span>`).join("")}${entries.length > 6 ? `<span>and ${entries.length - 6} more</span>` : ""}</span></div>`;
+}
+
+/* ---------- inspector ---------- */
+function setTab(t) {
+  STATE.tab = t;
+  ["step", "trace", "checks"].forEach((k) => $("#tab-" + k).setAttribute("aria-selected", String(k === t)));
+  render();
+}
+["step", "trace", "checks"].forEach((k) => ($("#tab-" + k).onclick = () => setTab(k)));
+function openStage(name) { STATE.stage = name; STATE.act = null; STATE.sample = new Set(); STATE.tab = "step"; ladder(); setTab("step"); }
+function openAct(id) { STATE.act = id; STATE.stage = acts[id].stage; ladder(); setTab("step"); }
+function render() {
+  const el = $("#inspector");
+  if (STATE.tab === "trace") { el.innerHTML = traceView(); bindTrace(); return; }
+  if (STATE.tab === "checks") { el.innerHTML = checksView(); return; }
+  if (STATE.act) { el.innerHTML = actView(STATE.act); return; }
+  el.innerHTML = stageView(stageOf[STATE.stage]);
+  bindStage();
+}
+
+function stageView(s) {
+  if (s.runs.length === 1) return actView(s.runs[0]);
+  const keys = [...new Set(s.runs.flatMap((id) => Object.keys(acts[id].params)))];
+  const q = STATE.q.toLowerCase();
+  let rows = s.runs.filter((id) => (!STATE.flaggedOnly || acts[id].flags.some((f) => f.level !== "info")) && (!q || JSON.stringify(acts[id].params).toLowerCase().includes(q) || id.includes(q)));
+  rows = rows.sort((x, y) => STATE.sample.has(y) - STATE.sample.has(x));
+  return `<div class="record">
+    <div><div class="eyebrow">step</div><h2>${esc(s.name)}</h2></div>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Filter by parameter" value="${esc(STATE.q)}" aria-label="Filter runs">
+      <label><input type="checkbox" id="fo" ${STATE.flaggedOnly ? "checked" : ""}> Flagged only</label>
+      <button class="btn primary" id="sample">Pick ${Math.min(5, s.runs.length)} at random to spot-check</button>
+      <span class="muted">${rows.length} of ${s.runs.length}</span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Run</th><th>Started (UTC)</th><th>Status</th>${keys.map((k) => `<th>${esc(k)}</th>`).join("")}<th>Flags</th></tr></thead>
+      <tbody>${rows.map((id) => { const a = acts[id]; return `<tr data-act="${esc(id)}" class="${STATE.sample.has(id) ? "sampled" : ""}">
+        <td class="mono">${esc(short(id))}</td><td class="mono">${esc(fmtTime(a.started))}</td>
+        <td><span class="pill ${esc(a.status)}">${esc(a.status)}</span></td>
+        ${keys.map((k) => `<td>${esc(a.params[k])}</td>`).join("")}
+        <td>${a.flags.map((f) => `<span class="pill ${f.level === "info" ? "" : esc(f.level === "warn" ? "warn" : "error")}" title="${esc(f.text)}">${esc(f.code)}</span>`).join(" ")}</td></tr>`; }).join("")}</tbody>
+    </table></div></div>`;
+}
+function bindStage() {
+  const q = $("#q");
+  if (!q) return;
+  q.oninput = () => { STATE.q = q.value; const pos = q.selectionStart; render(); const n = $("#q"); n.focus(); n.setSelectionRange(pos, pos); };
+  $("#fo").onchange = (e) => { STATE.flaggedOnly = e.target.checked; render(); };
+  $("#sample").onclick = () => {
+    const ids = stageOf[STATE.stage].runs.slice();
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    STATE.sample = new Set(ids.slice(0, 5));
+    render();
+  };
+}
+function artBlock(i) {
+  if (i == null) return "";
+  const a = arts[i];
+  return `<div class="copies">${a.locs.map(([p, r]) => `<div><span class="role">${esc(r)}</span>${esc(p)}${copyBtn(p)}</div>`).join("")}</div>
+    <div class="muted mono">sha256 ${esc(a.sha)}… · ${esc(a.kind)} · ${fmtSize(a.size)}</div>`;
+}
+function flagList(flags) {
+  if (!flags.length) return `<div class="flags"><div class="flag ok"><span>No flags</span></div></div>`;
+  return `<div class="flags">${flags.map((f) => `<div class="flag ${esc(f.level)}"><span><b>${esc(f.code)}</b> · ${esc(f.text)}${f.refs.filter((r) => acts[r]).map((r) => ` <button class="linkbtn mono" data-act="${esc(r)}">${esc(acts[r].stage)} ${esc(short(r))}</button>`).join("")}</span></div>`).join("")}</div>`;
+}
+function actView(id) {
+  const a = acts[id];
+  const s = stageOf[a.stage];
+  const back = s.runs.length > 1 ? `<button class="linkbtn" data-stage="${esc(a.stage)}">← all ${s.runs.length} runs of ${esc(a.stage)}</button>` : "";
+  const kv = [
+    ["Run", `<span class="mono">${esc(id)}</span>`],
+    ["Where", `${esc(a.host)} · <span class="mono">${esc(a.cwd)}</span>`],
+    ["When", `${esc(fmtTime(a.started))} → ${esc(fmtTime(a.ended).slice(11))} UTC`],
+    ["Recorded by", `${esc(a.kind)}${a.function ? ` · <span class="mono">${esc(a.function)}</span>` : ""}`],
+  ];
+  if (a.shephex) kv.push(["shephex", `<span class="mono">${esc(a.shephex)}</span>`]);
+  if (a.slurm) kv.push(["Slurm job", `<span class="mono">${esc(a.slurm)}</span>`]);
+  if (a.container) kv.push(["Container", `<span class="mono">${esc(a.container)}</span>`]);
+  if (a.error) kv.push(["Error", `<span class="mono">${esc(a.error)}</span>`]);
+  Object.entries(a.params).forEach(([k, v]) => kv.push([esc(k), `<span class="mono">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`]));
+  const inputs = a.inputs.map((i) => `<div class="io-item">
+      <div><b>${esc(i.param || "input")}</b> ${i.prod ? `<button class="linkbtn" data-act="${esc(i.prod)}">← from ${esc(acts[i.prod].stage)} ${esc(short(i.prod))}</button>` : i.origin ? `<span class="origin">origin · no recorded step wrote this</span>` : `<span class="origin" style="color:var(--err)">changed after it was written</span>`}</div>
+      <div class="how">${i.how === "observed" ? "observed (opened by the code)" : "declared"}</div>${artBlock(i.a)}</div>`).join("");
+  const outputs = a.outputs.map((o) => `<div class="io-item">${artBlock(o)}</div>`).join("");
+  const consumers = D.consumers[id] || [];
+  const git = a.code.git.map((g) => `<div class="io-item"><div class="path">${esc(g.root)}</div><div class="how">commit <span class="mono">${esc((g.commit || "").slice(0, 10))}</span>${g.dirty ? ` · <span style="color:var(--warn)">uncommitted changes</span> (diff ${esc((g.diff_sha || "").slice(0, 10))}…)` : " · clean"}</div></div>`).join("");
+  const files = Object.entries(a.code.files).map(([p, sha]) => `<div><span class="role">${p === a.code.entry ? "entry" : "module"}</span>${esc(p)} <span class="muted">${esc(sha)}…</span></div>`).join("");
+  return `<div class="record">${back}
+    <div><div class="eyebrow">${esc(a.stage)}</div><h2>${esc(a.stage)} ${esc(short(id))} <span class="pill ${esc(a.status)}">${esc(a.status)}</span></h2></div>
+    ${flagList(a.flags)}
+    <div class="toolbar"><button class="btn" data-trace="${esc(id)}">Trace this run</button></div>
+    <dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+    <div class="io"><h3>Inputs (${a.inputs.length})</h3>${inputs || '<span class="muted">None</span>'}</div>
+    <div class="io"><h3>Outputs (${a.outputs.length})</h3>${outputs || '<span class="muted">None</span>'}</div>
+    ${consumers.length ? `<div class="io"><h3>Used by</h3><div>${[...new Set(consumers)].map((c) => `<button class="linkbtn" data-act="${esc(c)}">${esc(acts[c].stage)} ${esc(short(c))}</button>`).join(" · ")}</div></div>` : ""}
+    <div class="io"><h3>Code</h3>${git}<div class="copies">${files}</div><div class="muted">Python ${esc(a.python)} · ${Object.entries(a.packages).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(", ")}</div></div>
+  </div>`;
+}
+
+/* ---------- trace ---------- */
+function upstream(id, depth, seen, out) {
+  const a = acts[id];
+  out.push({ id, depth, again: seen.has(id) });
+  if (seen.has(id)) return;
+  seen.add(id);
+  const prods = [...new Set(a.inputs.filter((i) => i.prod).map((i) => i.prod))];
+  prods.forEach((p) => upstream(p, depth + 1, seen, out));
+  a.inputs.filter((i) => !i.prod).forEach((i) => out.push({ origin: i, depth: depth + 1 }));
+}
+function downstream(id) {
+  const chain = [];
+  let cur = id;
+  const seen = new Set();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    chain.push(cur);
+    const next = (D.consumers[cur] || []).filter((c) => acts[c]);
+    cur = next.sort((x, y) => acts[x].depth - acts[y].depth)[0];
+  }
+  return chain;
+}
+function traceView() {
+  const all = D.stages.flatMap((s) => s.runs);
+  STATE.trace ??= D.target_steps[0];
+  const id = STATE.trace;
+  const up = [];
+  upstream(id, 0, new Set(), up);
+  const down = downstream(id);
+  const line = (r) => {
+    const pad = "│ ".repeat(r.depth);
+    if (r.origin) return `<div class="row"><span class="indent">${pad}</span><span class="${r.origin.origin ? "origin" : ""}" style="${r.origin.origin ? "" : "color:var(--err)"}">${r.origin.origin ? "origin" : "changed after written"} · <span class="mono">${esc(r.origin.path)}</span></span></div>`;
+    const a = acts[r.id];
+    const fl = a.flags.filter((f) => f.level !== "info").map((f) => `<span class="pill ${f.level === "warn" ? "warn" : "error"}">${esc(f.code)}</span>`).join(" ");
+    return `<div class="row"><span class="indent">${pad}</span><span><button class="linkbtn" data-act="${esc(r.id)}">${esc(a.stage)} ${esc(short(r.id))}</button> <span class="pill ${esc(a.status)}">${esc(a.status)}</span> <span class="mono muted">${params(a)}</span> ${r.again ? '<span class="muted">(shown above)</span>' : fl}</span></div>`;
+  };
+  return `<div class="record">
+    <div><h2>Trace a run</h2><p class="muted" style="margin:4px 0 0">Everything a run depends on, down to its origin files, and the path from it to the result.</p></div>
+    <div class="toolbar"><label>Run <select id="trun">${D.stages.map((s) => `<optgroup label="${esc(s.name)}">${s.runs.map((r) => `<option value="${esc(r)}" ${r === id ? "selected" : ""}>${esc(s.name)} ${esc(short(r))} ${params(acts[r]).replace(/<[^>]+>/g, "")}</option>`).join("")}</optgroup>`).join("")}</select></label></div>
+    <div class="io"><h3>Path to the result</h3><div class="tree">${down.map((d, k) => `<div class="row"><span class="indent">${k ? "↓" : "•"}</span><span><button class="linkbtn" data-act="${esc(d)}">${esc(acts[d].stage)} ${esc(short(d))}</button> <span class="mono muted">${params(acts[d])}</span></span></div>`).join("")}<div class="row"><span class="indent">↓</span><span class="mono">${esc(D.target)}</span></div></div></div>
+    <div class="io"><h3>Depends on</h3><div class="tree">${up.map(line).join("")}</div></div>
+  </div>`;
+}
+function bindTrace() { $("#trun").onchange = (e) => { STATE.trace = e.target.value; render(); }; }
+
+/* ---------- checks ---------- */
+const CHECK_TEXT = {
+  "modified-after-write": "A file was changed between the step that wrote it and the step that read it, by something that left no record.",
+  "failed-producer": "A step used an output of a step that failed.",
+  "failed": "The step itself failed.",
+  "undeclared-read": "The code opened a file it did not declare as an input.",
+  "superseded-input": "A step used a version of a file that was later rewritten by a re-run.",
+  "mixed-lineage": "A step's inputs descend from different versions of the same file.",
+  "missing-output": "A declared output was never written.",
+  "undeclared-write": "The code wrote a file it did not declare as an output.",
+  "subprocess": "The step ran another program; what that program read and wrote is only known from declarations.",
+  "changed-on-disk": "An output on disk no longer matches what the step wrote.",
+};
+function checksView() {
+  const all = [];
+  Object.entries(acts).forEach(([id, a]) => a.flags.forEach((f) => all.push({ id, f })));
+  const order = { error: 0, warn: 1, info: 2 };
+  all.sort((x, y) => order[x.f.level] - order[y.f.level] || acts[x.id].started.localeCompare(acts[y.id].started));
+  const groups = {};
+  all.forEach((x) => (groups[x.f.code] ??= []).push(x));
+  return `<div class="record">
+    <div><h2>Checks</h2><p class="muted" style="margin:4px 0 0">${all.length ? "Problems found by linking the records, most serious first." : "No problems found."}</p></div>
+    ${Object.entries(groups).map(([code, xs]) => `<div class="io"><h3>${esc(code)} (${xs.length})</h3><p class="muted" style="margin:0">${esc(CHECK_TEXT[code] || "")}</p>
+      <div class="checks">${xs.map(({ id, f }) => `<div class="check ${esc(f.level)}"><div><button class="linkbtn" data-act="${esc(id)}">${esc(acts[id].stage)} ${esc(short(id))}</button> <span class="who mono">${params(acts[id])}</span><div>${esc(f.text)}</div></div></div>`).join("")}</div></div>`).join("")}
+  </div>`;
+}
+
+summary();
+const flagged = D.stages.find((s) => s.runs.some((r) => acts[r].flags.some((f) => f.level !== "info")));
+STATE.stage = (flagged || D.stages[0]).name;
+ladder();
+setTab(count("error") + count("warn") ? "checks" : "step");
+</script>
