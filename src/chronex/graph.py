@@ -36,9 +36,16 @@ class Flag:
     code: str
     text: str
     refs: list[str] = field(default_factory=list)  # ids of related steps
+    path: str | None = None  # the file it is about, if any
 
     def to_dict(self) -> dict[str, Any]:
-        return {"level": self.level, "code": self.code, "text": self.text, "refs": self.refs}
+        return {
+            "level": self.level,
+            "code": self.code,
+            "text": self.text,
+            "path": self.path,
+            "refs": self.refs,
+        }
 
 
 @dataclass
@@ -347,6 +354,7 @@ def _resolve(
                 f"{inp['rel']} ({inp['size']} bytes) has the same content as an output of "
                 f"{names}, too little to link by content",
                 ambiguous,
+                inp["path"],
             )
         else:
             flag = Flag(
@@ -355,6 +363,7 @@ def _resolve(
                 f"{inp['rel']} has the same content as outputs of unrelated steps ({names}); "
                 "not linked to either",
                 ambiguous,
+                inp["path"],
             )
         flags[sid].append(flag)
         return Link(producer=None, path=None, origin=False, ambiguous=ambiguous)
@@ -372,6 +381,7 @@ def _resolve(
                 f"{inp['rel']} differs from what {writer['name']} wrote there "
                 f"({written[:10]}… then, {sha[:10]}… when read): changed without a record",
                 [writer["id"]],
+                inp["path"],
             )
         )
         return Link(producer=None, path=None, origin=False)
@@ -408,6 +418,7 @@ def _check_record(
                     "failed-producer",
                     f"{inp['rel']} comes from a {producer['status']} run of {producer['name']}",
                     [producer["id"]],
+                    inp["path"],
                 )
             )
         later = [
@@ -423,8 +434,10 @@ def _check_record(
                     "superseded-input",
                     f"{inp['rel']} is the version {producer['name']} wrote at "
                     f"{producer['ended'][11:19]} UTC; {newest['name']} rewrote "
-                    f"{os.path.basename(link.path or '')} at {newest['ended'][11:19]} UTC",
+                    f"{os.path.relpath(link.path or '', record['cwd'])} at "
+                    f"{newest['ended'][11:19]} UTC: re-run {record['name']} to use the new version",
                     [producer["id"], newest["id"]],
+                    inp["path"],
                 )
             )
     for path in record.get("undeclared_reads", []):
@@ -433,6 +446,7 @@ def _check_record(
                 "warn",
                 "undeclared-read",
                 f"read {os.path.relpath(path, record['cwd'])} without declaring it",
+                path=path,
             )
         )
     for path in record.get("undeclared_writes", []):
@@ -441,6 +455,7 @@ def _check_record(
                 "info",
                 "undeclared-write",
                 f"wrote {os.path.relpath(path, record['cwd'])} without declaring it",
+                path=path,
             )
         )
     for path in record.get("missing_inputs", []):
@@ -449,12 +464,14 @@ def _check_record(
                 "warn",
                 "missing-input",
                 f"declared input {os.path.relpath(path, record['cwd'])} did not exist",
+                path=path,
             )
         )
     if record["status"] != "failed":  # a failed step's missing outputs are not news
         for path in record.get("missing_outputs", []):
             rel = os.path.relpath(path, record["cwd"])
-            flags.append(Flag("error", "missing-output", f"declared output {rel} was not written"))
+            text = f"declared output {rel} was not written"
+            flags.append(Flag("error", "missing-output", text, path=path))
     if record.get("code", {}).get("unrecorded"):
         flags.append(
             Flag(
@@ -494,6 +511,7 @@ def _check_record(
                             "info",
                             "changed-on-disk",
                             f"{out['rel']} has changed since this step wrote it",
+                            path=out["path"],
                         )
                     )
 

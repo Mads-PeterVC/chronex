@@ -181,3 +181,21 @@ def test_the_summary_counts_origin_files_once(
     use(Path("config"), Path("b"))
     out = check(capsys=capsys)[1]
     assert out.strip() == "2 current steps; 0 linked inputs, 1 origin file, 0 flags"
+
+
+def test_json_names_the_step_and_the_file(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    make(Path("a"), "v1")
+    Path("a").write_text("edited")
+    use(Path("a"), Path("b"))
+    code, out = check("--json", capsys=capsys)
+    assert code == 1
+    (entry,) = json.loads(out)
+    assert entry["name"] == "use"
+    assert entry["status"] == "completed"
+    assert entry["code"] == "modified-after-write"
+    assert entry["path"] == str(workdir / "a")
+    assert Path(entry["record"]).is_file()

@@ -47,7 +47,18 @@ def _check(args: argparse.Namespace) -> int:
         (sid, f) for sid, f in graph.all_flags() if sid in scope and (f.level != "info" or args.all)
     ]
     if args.json:
-        print(json.dumps([{"step": sid, **f.to_dict()} for sid, f in found], indent=1))
+        entries = [
+            {
+                "step": sid,
+                "name": graph.records[sid]["name"],
+                "status": graph.records[sid]["status"],
+                "cwd": graph.records[sid]["cwd"],
+                "record": graph.records[sid].get("_file"),
+                **f.to_dict(),
+            }
+            for sid, f in found
+        ]
+        print(json.dumps(entries, indent=1))
     else:
         color = sys.stdout.isatty()
         for sid, flag in found:

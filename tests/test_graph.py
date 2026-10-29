@@ -242,3 +242,14 @@ def test_a_directory_of_raw_files_stays_one_origin(workdir: Path) -> None:
     (record,) = graph.records.values()
     assert [i["rel"] for i in record["inputs"]] == ["raw"]
     assert graph.links[record["id"]][0].origin
+
+
+def test_superseded_input_names_one_path_and_what_to_rerun(workdir: Path) -> None:
+    Path("sub").mkdir()
+    make(Path("sub/a"), "v1")
+    use(Path("sub/a"), Path("b"))
+    make(Path("sub/a"), "v2")
+    graph = graphs.build(graphs.load(workdir))
+    (text,) = [f.text for _, f in graph.all_flags() if f.code == "superseded-input"]
+    assert text.count("sub/a") == 2
+    assert text.endswith("re-run use to use the new version")
