@@ -1,4 +1,5 @@
 import contextlib
+import json
 import shutil
 from pathlib import Path
 
@@ -149,3 +150,15 @@ def test_trivial_content_does_not_link_across_paths(workdir: Path) -> None:
     assert link.producer is None and link.ambiguous
     flags = [f for sid, f in graph.all_flags() if f.code == "ambiguous-input"]
     assert [f.level for f in flags] == ["info"]
+
+
+def test_a_cycle_of_links_does_not_crash(workdir: Path) -> None:
+    Path("a").write_text("content copied back and forth between two files " * 2)
+    copy(Path("a"), Path("b"))
+    copy(Path("b"), Path("a"))
+    # Equal timestamps (coarse clocks, or one clock across fast steps) allow a cycle.
+    for record in graphs.load(workdir):
+        record["started"] = record["ended"] = "2026-01-01T00:00:00.000+00:00"
+        Path(record.pop("_file")).write_text(json.dumps(record))
+    graph = graphs.build(graphs.load(workdir))
+    assert len(graph.records) == 2

@@ -325,19 +325,34 @@ def _check_mixed(graph: Graph, writers: dict[tuple[str, str], list[tuple[Record,
     """Flag the step where two versions of the same file, written by re-runs, first meet."""
     memo: dict[str, dict[tuple[str, str], set[str]]] = {}
 
-    def versions(sid: str) -> dict[tuple[str, str], set[str]]:
-        """Versions of each path written by this step and everything upstream of it."""
-        if sid not in memo:
+    def versions(start: str) -> dict[tuple[str, str], set[str]]:
+        """Versions of each path written by this step and everything upstream of it.
+
+        An iterative depth-first walk: chains can be long, and links that close a cycle
+        (possible with equal timestamps) are skipped.
+        """
+        visiting: set[str] = set()
+        todo = [(start, False)]
+        while todo:
+            sid, ready = todo.pop()
+            if sid in memo or (not ready and sid in visiting):
+                continue
+            producers = [lk.producer for lk in graph.links[sid] if lk.producer]
+            if not ready:
+                visiting.add(sid)
+                todo.append((sid, True))
+                todo.extend((p, False) for p in producers if p not in memo and p not in visiting)
+                continue
             found: dict[tuple[str, str], set[str]] = defaultdict(set)
             record = graph.records[sid]
             for path, sha, _ in _outputs(record):
                 found[_host(record), path].add(sha)
-            for link in graph.links[sid]:
-                if link.producer:
-                    for key, shas in versions(link.producer).items():
-                        found[key] |= shas
+            for p in producers:
+                for key, shas in memo.get(p, {}).items():
+                    found[key] |= shas
             memo[sid] = found
-        return memo[sid]
+            visiting.discard(sid)
+        return memo[start]
 
     for sid, record in graph.records.items():
         producers = {lk.producer for lk in graph.links[sid] if lk.producer}
