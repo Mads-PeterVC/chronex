@@ -202,19 +202,21 @@ function count(level) { return Object.values(acts).reduce((n, a) => n + a.flags.
 function summary() {
   const ids = Object.keys(acts);
   const hosts = new Set(ids.map((id) => acts[id].host));
-  let linked = 0, origins = 0, unmatched = 0, ambiguous = 0;
-  ids.forEach((id) => acts[id].inputs.forEach((i) => (i.prod ? linked++ : i.origin ? origins++ : i.ambiguous.length ? ambiguous++ : unmatched++)));
+  let linked = 0, unmatched = 0, ambiguous = 0;
+  const origins = new Set();  // counted once per file, as chronex check does
+  ids.forEach((id) => acts[id].inputs.forEach((i) => (i.prod ? linked++ : i.origin ? origins.add(i.path) : i.ambiguous.length ? ambiguous++ : unmatched++)));
   if (D.image) {
     $("#figure").hidden = false;
     $("#figure").innerHTML = `<img src="${D.image}" alt="${esc(D.target)}">`;
   }
-  $("#eyebrow").textContent = `chronex · ${D.base}`;
+  $("#eyebrow").textContent = `chronex · ${D.base.split("/").filter(Boolean).pop() || D.base}`;
+  $("#eyebrow").title = D.base;
   $("#title").textContent = D.title;
   $("#lede").innerHTML = `${ids.length} recorded steps on ${hosts.size} host${hosts.size > 1 ? "s" : ""} lead to <span class="mono">${esc(D.target)}</span>. Steps are linked where one step's output and another's input have the same SHA-256, so copies between folders and machines are followed automatically.`;
   const e = count("error"), w = count("warn");
   $("#summary").innerHTML = [
     `<span class="chip ok"><b>${linked}</b> inputs linked to the step that wrote them</span>`,
-    `<span class="chip bound"><b>${origins}</b> origin inputs</span>`,
+    `<span class="chip bound"><b>${origins.size}</b> origin file${origins.size === 1 ? "" : "s"}</span>`,
     unmatched ? `<span class="chip err"><b>${unmatched}</b> inputs changed after they were written</span>` : "",
     ambiguous ? `<span class="chip warn"><b>${ambiguous}</b> inputs with the same content as unrelated outputs</span>` : "",
     `<span class="chip ${e ? "err" : "ok"}"><b>${e}</b> errors</span>`,

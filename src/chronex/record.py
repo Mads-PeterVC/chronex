@@ -1,9 +1,9 @@
 """A step: one execution of some code, with what it read, wrote, ran and where.
 
-Each step is written as one JSON file to ``.chronex/`` in the directory the step ran in, so
-records travel with the outputs (rsync, ``hex remote pull``) and a tree of results can be
+Each step is written as one JSON file to `.chronex/` in the directory the step ran in, so
+records travel with the outputs (rsync, `hex remote pull`) and a tree of results can be
 indexed later without any server. The file is written when the step starts, with status
-``running``, and rewritten when it ends; a record left ``running`` means the process died
+`running`, and rewritten when it ends; a record left `running` means the process died
 without finishing it. SIGTERM (a Slurm time limit) finishes open steps as failed first.
 """
 
@@ -133,16 +133,16 @@ def _jsonable(value: Any) -> Any:
 
 
 class Step:
-    """Collects one step's provenance; use through ``chronex.step`` or ``chronex.track``.
+    """Collects one step's provenance; use through `chronex.step` or `chronex.track`.
 
     Parameters
     ----------
     name
-        What the step is, e.g. ``fit``. Runs of the same step share the name.
+        What the step is, e.g. `fit`. Runs of the same step share the name.
     params
         Parameters that are not files.
     kind
-        ``function``, ``block``, ``script`` or ``command``: which API produced the record.
+        `function`, `block`, `script` or `command`: which API produced the record.
     auto
         Treat every observed read as an input and every observed write as an output
         (zero-touch mode) instead of reporting them as undeclared.
@@ -190,7 +190,7 @@ class Step:
     # -- declaring files -------------------------------------------------------------------
 
     def input(self, path: str | os.PathLike[str], param: str | None = None) -> Any:
-        """Declare ``path`` as an input; it is hashed now. Returns ``path`` unchanged."""
+        """Declare `path` as an input; it is hashed now. Returns `path` unchanged."""
         absolute = os.path.abspath(os.fspath(path))
         entry: dict[str, Any] = {
             "path": absolute,
@@ -203,7 +203,7 @@ class Step:
         return path
 
     def output(self, path: str | os.PathLike[str], param: str | None = None) -> Any:
-        """Declare ``path`` as an output; it is hashed when the step ends. Returns ``path``."""
+        """Declare `path` as an output; it is hashed when the step ends. Returns `path`."""
         absolute = os.path.abspath(os.fspath(path))
         if all(absolute != p for p, _ in self._declared_outputs):
             self._declared_outputs.append((absolute, param))
@@ -370,7 +370,7 @@ class Step:
         return self.path
 
     def _write_start(self) -> None:
-        """Write the record as ``running``, so a process that dies still leaves it behind."""
+        """Write the record as `running`, so a process that dies still leaves it behind."""
         with _guard.quiet():
             checks: dict[str, Any] = {
                 "undeclared_reads": [],

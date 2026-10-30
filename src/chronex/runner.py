@@ -1,9 +1,9 @@
-"""``chronex run -- cmd``: record a command without touching its code.
+"""`chronex run -- cmd`: record a command without touching its code.
 
-Python processes started by the command record themselves (see ``_boot/sitecustomize.py``):
+Python processes started by the command record themselves (see `_boot/sitecustomize.py`):
 every file they open is an input or an output. For anything else (shell, compiled tools) the
-wrapper records the command itself, with the inputs given by ``--in`` and the outputs given by
-``--out`` or found by comparing ``--watch`` directories before and after.
+wrapper records the command itself, with the inputs given by `--in` and the outputs given by
+`--out` or found by comparing `--watch` directories before and after.
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ def _summary(record: dict[str, Any]) -> str:
 
 
 def _misplaced(command: list[str], given: dict[str, list[str]]) -> list[str]:
-    """chronex run's own options found after ``--``, where they go to the command instead."""
+    """chronex run's own options found after `--`, where they go to the command instead."""
     return [option for option, values in given.items() if option in command[1:] and not values]
 
 

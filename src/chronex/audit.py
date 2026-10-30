@@ -1,6 +1,6 @@
 """Observe what a step actually touches through Python's audit hooks (PEP 578).
 
-Every ``open()`` in the process raises an ``open`` audit event, including those inside numpy,
+Every `open()` in the process raises an `open` audit event, including those inside numpy,
 pandas or ASE. While a step is active, the hook files each event as a read or a write of an
 absolute path, and a rename as a write of its new name. Subprocesses are noted too: what they
 read and write is invisible here.
@@ -65,7 +65,7 @@ _IGNORED_PARTS = tuple(
 
 
 def _extra_ignored() -> tuple[str, ...]:
-    """Path prefixes listed in ``CHRONEX_IGNORE`` (separated like PATH)."""
+    """Path prefixes listed in `CHRONEX_IGNORE` (separated like PATH)."""
     value = os.environ.get("CHRONEX_IGNORE", "")
     return tuple(os.path.abspath(p) for p in value.split(os.pathsep) if p)
 

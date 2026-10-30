@@ -195,7 +195,10 @@ def test_json_names_the_step_and_the_file(
     use(Path("a"), Path("b"))
     code, out = check("--json", capsys=capsys)
     assert code == 1
-    (entry,) = json.loads(out)
+    found = json.loads(out)
+    assert found["summary"]["flags"] == {"error": 1, "warn": 0, "info": 0}
+    assert found["summary"]["passed"] is False
+    (entry,) = found["flags"]
     assert entry["name"] == "use"
     assert entry["status"] == "completed"
     assert entry["code"] == "modified-after-write"

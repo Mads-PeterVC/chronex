@@ -1,7 +1,7 @@
 """The ways to mark up code: a decorator with typed paths, a block, or a whole script.
 
-All three produce the same record. Inside any of them, ``chronex.input(path)`` and
-``chronex.output(path)`` declare files the signature cannot name in advance. Outside a step
+All three produce the same record. Inside any of them, `chronex.input(path)` and
+`chronex.output(path)` declare files the signature cannot name in advance. Outside a step
 they do nothing, so annotated code also runs untracked.
 """
 
@@ -46,7 +46,7 @@ IN = _Role("In")
 OUT = _Role("Out")
 
 In = Annotated[T, IN]
-"""A parameter holding input path(s): ``data: In[Path]`` or ``chunks: In[list[Path]]``."""
+"""A parameter holding input path(s): `data: In[Path]` or `chunks: In[list[Path]]`."""
 Out = Annotated[T, OUT]
 """A parameter holding output path(s), hashed when the function returns."""
 
@@ -130,7 +130,7 @@ def _decorate(
 
 
 class StepSpec:
-    """``chronex.step("name", **params)``: a decorator, or a ``with`` block."""
+    """`chronex.step("name", **params)`: a decorator, or a `with` block."""
 
     def __init__(self, name: str | None, params: dict[str, Any]) -> None:
         self.name = name
@@ -163,7 +163,7 @@ def step(name: str | None = None, /, **params: Any) -> StepSpec: ...
 def step(arg: Any = None, /, **params: Any) -> Any:
     """Record a function call, or a block, as a step.
 
-    As a decorator, parameters annotated ``In[...]`` / ``Out[...]`` are the step's files and
+    As a decorator, parameters annotated `In[...]` / `Out[...]` are the step's files and
     every other argument is a recorded parameter::
 
         @chronex.step
@@ -200,7 +200,7 @@ def _unrecorded(function: str, path: Any) -> None:
 
 
 def input(path: T, param: str | None = None) -> T:
-    """Declare an input of the current step and return ``path``; a no-op outside a step."""
+    """Declare an input of the current step and return `path`; a no-op outside a step."""
     active = current()
     if active is not None:
         active.input(path, param)  # type: ignore[arg-type]
@@ -210,7 +210,7 @@ def input(path: T, param: str | None = None) -> T:
 
 
 def output(path: T, param: str | None = None) -> T:
-    """Declare an output of the current step and return ``path``; a no-op outside a step."""
+    """Declare an output of the current step and return `path`; a no-op outside a step."""
     active = current()
     if active is not None:
         active.output(path, param)  # type: ignore[arg-type]
@@ -222,8 +222,8 @@ def output(path: T, param: str | None = None) -> T:
 def track(name: str | None = None, *, auto: bool = False, **params: Any) -> Step:
     """Record the rest of this script as one step, finished when the interpreter exits.
 
-    One line at the top of a script. Files are then declared with ``chronex.input`` and
-    ``chronex.output``; an uncaught exception marks the step failed.
+    One line at the top of a script. Files are then declared with `chronex.input` and
+    `chronex.output`; an uncaught exception marks the step failed.
     """
     active = Step(
         name or script_name(), params, kind="script", auto=auto, function_file=main_file()

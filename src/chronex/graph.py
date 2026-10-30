@@ -311,7 +311,7 @@ def _expand(inputs: list[dict[str, Any]], produced: dict[str, Any]) -> list[dict
     """Split a directory input into its files, if steps wrote them one by one.
 
     A directory written as a whole by one step links as it is. One whose files were written
-    by separate steps (``fits/`` filled by one fit per dataset) links through its files. A
+    by separate steps (`fits/` filled by one fit per dataset) links through its files. A
     directory of files no step wrote stays one origin input.
     """
     expanded = []
@@ -397,8 +397,8 @@ def _resolve(
             flag = Flag(
                 "warn",
                 "ambiguous-input",
-                f"{inp['rel']} has the same content as outputs of unrelated steps ({names}); "
-                "not linked to either",
+                f"{inp['rel']} has the same content as outputs of unrelated steps ({names}), "
+                "so it is not linked",
                 ambiguous,
                 inp["path"],
             )

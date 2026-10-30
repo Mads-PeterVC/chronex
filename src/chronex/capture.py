@@ -64,7 +64,7 @@ def git_state(directory: str) -> dict[str, Any] | None:
 
 
 def _local_module_files(roots: set[str]) -> dict[str, str]:
-    """Files of loaded modules that live under one of ``roots`` (the user's own code)."""
+    """Files of loaded modules that live under one of `roots` (the user's own code)."""
     files = {}
     for module in list(sys.modules.values()):
         path = getattr(module, "__file__", None)
@@ -81,8 +81,8 @@ def _local_module_files(roots: set[str]) -> dict[str, str]:
 def main_file() -> str | None:
     """The script being run.
 
-    ``__main__.__file__``, or ``sys.argv[0]`` when that is gone: Python 3.15 clears it before
-    ``atexit`` handlers run.
+    `__main__.__file__`, or `sys.argv[0]` when that is gone: Python 3.15 clears it before
+    `atexit` handlers run.
     """
     main = getattr(sys.modules.get("__main__"), "__file__", None)
     if isinstance(main, str):
@@ -93,7 +93,7 @@ def main_file() -> str | None:
 
 
 def inline_source() -> str | None:
-    """The code given with ``python -c``, if that is how this process runs."""
+    """The code given with `python -c`, if that is how this process runs."""
     argv = getattr(sys, "orig_argv", [])
     if sys.argv[:1] != ["-c"] or "-c" not in argv[:-1]:
         return None
@@ -101,7 +101,7 @@ def inline_source() -> str | None:
 
 
 def script_name() -> str:
-    """A step name for the whole process: the script's name, or ``inline`` for ``-c``."""
+    """A step name for the whole process: the script's name, or `inline` for `-c`."""
     if not sys.argv or not sys.argv[0]:
         return "script"
     if sys.argv[0] == "-c":

@@ -11,8 +11,8 @@ Mark up a step in whichever way costs the least in that piece of code::
     chronex.track(alpha=alpha)                      # the rest of a script
     x = np.load(chronex.input("data.npy"))
 
-or not at all, with ``chronex run -- python script.py``. Each produces one JSON record per
-step in ``.chronex/``; ``chronex check`` links them by file hash and reports problems.
+or not at all, with `chronex run -- python script.py`. Each produces one JSON record per
+step in `.chronex/`; `chronex check` links them by file hash and reports problems.
 """
 
 __version__ = "0.0.1"

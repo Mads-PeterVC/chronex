@@ -42,7 +42,7 @@ def tree_sha256(
 ) -> tuple[str, int, dict[str, str], dict[str, int]]:
     """Identity, total size, and per-file hashes and sizes of a directory tree.
 
-    ``.chronex`` is excluded.
+    `.chronex` is excluded.
     """
     root = Path(path)
     files = {}
@@ -56,9 +56,9 @@ def tree_sha256(
 
 
 def identify(path: str | os.PathLike[str]) -> dict[str, object]:
-    """Kind, hash and size of a file or directory, or ``kind: missing``.
+    """Kind, hash and size of a file or directory, or `kind: missing`.
 
-    Directories also list their files' hashes (up to ``MAX_LISTED_FILES``), so a later step
+    Directories also list their files' hashes (up to `MAX_LISTED_FILES`), so a later step
     reading one file of an output directory still links to the step that wrote the directory.
     """
     p = Path(path)

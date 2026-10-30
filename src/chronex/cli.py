@@ -1,4 +1,4 @@
-"""Command line: ``chronex run``, ``check``, ``show``, ``report`` and ``forget``."""
+"""Command line: `chronex run`, `check`, `show`, `report` and `forget`."""
 
 from __future__ import annotations
 
@@ -47,7 +47,27 @@ def _check(args: argparse.Namespace) -> int:
         (sid, f) for sid, f in graph.all_flags() if sid in scope and (f.level != "info" or args.all)
     ]
     kept = {sid: graph.kept_by(sid) for sid in {sid for sid, _ in found}}
+    links = sum(1 for sid in scope for link in graph.links[sid] if link.producer)
+    origins = {
+        inp["path"]
+        for sid in scope
+        for inp, link in zip(graph.records[sid]["inputs"], graph.links[sid], strict=True)
+        if link.origin
+    }
+    hidden = 0 if args.history or args.target else len(graph.records) - len(scope)
+    outside = _outside(graph, scope, args.roots)
+    failing = ("error", "warn") if args.strict else ("error",)
+    failed = any(f.level in failing for _, f in found)
     if args.json:
+        summary = {
+            "steps": len(scope),
+            "hidden": hidden,
+            "linked_inputs": links,
+            "origin_files": len(origins),
+            "origins_outside_roots": outside,
+            "flags": {level: sum(f.level == level for _, f in found) for level in graphs.LEVELS},
+            "passed": not failed,
+        }
         entries = [
             {
                 "step": sid,
@@ -60,7 +80,7 @@ def _check(args: argparse.Namespace) -> int:
             }
             for sid, f in found
         ]
-        print(json.dumps(entries, indent=1))
+        print(json.dumps({"summary": summary, "flags": entries}, indent=1))
     else:
         color = sys.stdout.isatty()
         for sid, flag in found:
@@ -68,31 +88,21 @@ def _check(args: argparse.Namespace) -> int:
             label = f"{flag.level:5} {flag.code:22} {record['name']:10} {sid[-8:]}"
             prefix, reset = (COLORS[flag.level], "\033[0m") if color else ("", "")
             print(f"{prefix}{label}{reset}  {flag.text}{_kept(graph, kept[sid])}")
-        links = sum(1 for sid in scope for link in graph.links[sid] if link.producer)
-        origins = {
-            inp["path"]
-            for sid in scope
-            for inp, link in zip(graph.records[sid]["inputs"], graph.links[sid], strict=True)
-            if link.origin
-        }
-        hidden = len(graph.records) - len(scope)
         current = "" if args.history or args.target else "current "
         steps = f"{len(scope)} {current}steps"
-        if hidden and not args.target:
+        if hidden:
             steps += f" ({hidden} older {_plural(hidden, 'run')} hidden, --history to show)"
         print(
             f"{steps}; {links} linked {_plural(links, 'input')}, {len(origins)} origin "
             f"{_plural(len(origins), 'file')}, {len(found)} {_plural(len(found), 'flag')}"
         )
-        outside = _outside(graph, scope, args.roots)
         if outside:
             inputs = "input" if outside == 1 else "inputs"
             print(
                 f"{outside} origin {inputs} outside the searched directories: "
                 "their producers' records may be elsewhere"
             )
-    failing = ("error", "warn") if args.strict else ("error",)
-    return 1 if any(f.level in failing for _, f in found) else 0
+    return 1 if failed else 0
 
 
 def _kept(graph: graphs.Graph, users: list[str]) -> str:
@@ -119,6 +129,7 @@ def _show(args: argparse.Namespace) -> int:
         print(graph.why_unknown(args.path))
         return 2
     seen: set[str] = set()
+    origins: set[str] = set()  # each named once, not under every step that read it
 
     def show(sid: str, depth: int) -> None:
         record = graph.records[sid]
@@ -145,7 +156,10 @@ def _show(args: argparse.Namespace) -> int:
             elif link.ambiguous:
                 names = ", ".join(sorted({graph.records[a]["name"] for a in link.ambiguous}))
                 print(f"{indent}same content as an output of {names}: {path}")
+            elif link.origin and inp["path"] in origins:
+                print(f"{indent}origin: {path} (see above)")
             elif link.origin:
+                origins.add(inp["path"])
                 print(f"{indent}origin: {path} ({(inp['sha'] or 'missing')[:10]})")
             else:
                 print(f"{indent}changed without a record: {path} ({(inp['sha'] or '')[:10]})")
@@ -168,7 +182,7 @@ def _report(args: argparse.Namespace) -> int:
 
 
 def _forget(args: argparse.Namespace) -> int:
-    """Move records out of the way, into ``.chronex/forgotten/``, where nothing reads them."""
+    """Move records out of the way, into `.chronex/forgotten/`, where nothing reads them."""
     graph = graphs.build(graphs.load(*(args.root or ["."])))
 
     def matches(wanted: str) -> set[str]:
@@ -264,7 +278,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--history", action="store_true", help="include steps redone by later runs")
     p.add_argument("--strict", action="store_true", help="fail on warnings too")
     p.add_argument("--all", action="store_true", help="include info-level notes")
-    p.add_argument("--json", action="store_true")
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help='print {"summary": {...}, "flags": [...]}: counts, and each flag with its step',
+    )
     p.set_defaults(func=_check)
 
     p = sub.add_parser(
