@@ -166,7 +166,7 @@ def to_dot(found: Lineage) -> str:
     for (producer, consumer), files in sorted(found.edges.items()):
         attrs = {
             "label": _edge_label(sorted(files)),
-            "tooltip": "\n".join(_listed(sorted(files))),
+            "tooltip": "\n".join(_listed(sorted(files), indent="")),
         }
         lines.append(f"  {_id('step', producer)} -> {_id('step', consumer)} [{_attrs(attrs)}];")
     target = _id("file", found.target)
@@ -194,15 +194,7 @@ def _tooltip(name: str, runs: list[Record], flags: list[tuple[str, str, str]]) -
     lines = [f"{name}: {runs_text} ({counts})"]
     for key, value in _params(runs).items():
         lines.append(f"{key} = {value}")
-    commits = sorted({_commit(g) for r in runs for g in r["code"]["git"]})
-    if commits:
-        lines.append("code: " + ", ".join(commits))
-    elif any(r["code"]["files"] for r in runs):
-        lines.append("code: not in git (only file hashes recorded)")
-    hosts = sorted({str(r["env"]["host"]) for r in runs})
-    lines.append(
-        "host: " + ", ".join(hosts[:3]) + (f" and {len(hosts) - 3} more" if len(hosts) > 3 else "")
-    )
+    lines += _code(runs)
     lines.append("ran: " + _span(runs))
     for r in runs:
         if r.get("error"):
@@ -219,11 +211,11 @@ def _params(runs: list[Record]) -> dict[str, str]:
     found: dict[str, list[Any]] = defaultdict(list)
     for r in runs:
         for key, value in r["params"].items():
+            if key == "argv":
+                key, value = "command", " ".join(map(str, _command(r)))
             found[key].append(value)
     shown = {}
     for key, values in found.items():
-        if key == "argv":
-            key, values = "command", [" ".join(map(str, v)) for v in values]
         distinct = sorted({json.dumps(v, sort_keys=True) for v in values})
         if len(distinct) == 1:
             shown[key] = _short(values[0])
@@ -234,6 +226,39 @@ def _params(runs: list[Record]) -> dict[str, str]:
             more = f" and {len(distinct) - 4} more" if len(distinct) > 4 else ""
             shown[key] = ", ".join(listed) + more
     return shown
+
+
+def _command(record: Record) -> list[Any]:
+    """The command line; a Python process recorded itself with only its script's arguments."""
+    argv: list[Any] = record["params"]["argv"]
+    if record.get("auto") and record.get("argv"):
+        return ["python", os.path.basename(record["argv"][0]), *argv]
+    return argv
+
+
+def _code(runs: list[Record]) -> list[str]:
+    """Which file the code ran from and its version, then the latest run's cell or -c code."""
+    entries = sorted({os.path.basename(r["code"]["entry"]) for r in runs if r["code"]["entry"]})
+    commits = sorted({_commit(g) for r in runs for g in r["code"]["git"]})
+    where = ", ".join(entries[:3]) + (f" and {len(entries) - 3} more" if len(entries) > 3 else "")
+    if commits:
+        version = "at " + ", ".join(commits)
+    elif any(r["code"]["files"] or r["code"]["inline"] for r in runs):
+        version = "not in git"
+    else:
+        version = ""
+    line = " ".join(part for part in (where, version) if part)
+    lines = [f"code: {line}"] if line else []
+    inline = runs[-1]["code"]["inline"]
+    if inline:
+        source = [
+            text[:79] + "…" if len(text) > 80 else text
+            for text in inline["source"].splitlines()
+            if text.strip()
+        ]
+        lines.append("cell:" if runs[-1]["code"]["entry"] else "code given with -c:")
+        lines += _listed(source)
+    return lines
 
 
 def _short(value: Any, limit: int = 60) -> str:
@@ -256,11 +281,11 @@ def _span(runs: list[Record]) -> str:
     return f"{first:%Y-%m-%d %H:%M} – {last:%Y-%m-%d %H:%M} UTC"
 
 
-def _listed(lines: Any) -> list[str]:
+def _listed(lines: Any, indent: str = "  ") -> list[str]:
     lines = list(lines)
-    shown = [f"  {line}" for line in lines[:MAX_LISTED]]
+    shown = [f"{indent}{line}" for line in lines[:MAX_LISTED]]
     if len(lines) > MAX_LISTED:
-        shown.append(f"  and {len(lines) - MAX_LISTED} more")
+        shown.append(f"{indent}and {len(lines) - MAX_LISTED} more")
     return shown
 
 

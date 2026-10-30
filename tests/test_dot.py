@@ -1,7 +1,10 @@
 """The Graphviz view of a lineage: one node per step, details in tooltips."""
 
+import os
 import shutil
 import subprocess
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -38,7 +41,10 @@ def test_runs_of_a_step_fold_into_one_node(workdir: Path) -> None:
     dot = to_dot(found)
     assert '"step:simulate" [label="simulate ×3"' in dot
     assert "seed = 0–2 (3 values)" in dot
-    assert '"step:simulate" -> "step:plot" [label="3 files in data/"' in dot
+    assert (
+        '"step:simulate" -> "step:plot" [label="3 files in data/", tooltip="data/run-0.csv&#10;'
+        in dot
+    )
     assert '"origin:plot" [label="config.json", shape="note"' in dot
     assert '"step:plot" -> "file:figure.png";' in dot
     assert "#f8d7da" not in dot and "#fff3cd" not in dot  # nothing flagged
@@ -83,3 +89,30 @@ def test_show_prints_dot_that_graphviz_accepts(
         svg = subprocess.run(["dot", "-Tsvg"], input=dot, capture_output=True, text=True)
         assert svg.returncode == 0, svg.stderr
         assert 'xlink:title="simulate: 3 runs (3 completed)' in svg.stdout
+
+
+def test_a_python_script_shows_its_command_and_file(workdir: Path) -> None:
+    Path("plot.py").write_text("from pathlib import Path\nPath('figure.png').write_text('x')\n")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CHRONEX_")}
+    command = [sys.executable, "-m", "chronex.cli", "run", "-q", "--", sys.executable, "plot.py"]
+    assert subprocess.call([*command, "--dpi", "90"], env=env) == 0
+    dot = to_dot(lineage(graphs.build(graphs.load(workdir)), "figure.png"))
+    assert "command = python plot.py --dpi 90&#10;code: plot.py not in git&#10;" in dot
+    assert "host:" not in dot
+
+
+def test_a_cell_shows_its_document_and_source(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = "with chronex.step('plot') as s:\n    Path(s.output('figure.png')).write_text('x')"
+    shell = types.SimpleNamespace(user_ns={"In": ["", source]})
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: shell  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setenv("QUARTO_DOCUMENT_PATH", str(workdir))
+    monkeypatch.setenv("QUARTO_DOCUMENT_FILE", "index.qmd")
+    Path("index.qmd").write_text("# a document")
+    with chronex.step("plot") as s:
+        Path(s.output("figure.png")).write_text("x")
+    dot = to_dot(lineage(graphs.build(graphs.load(workdir)), "figure.png"))
+    assert "code: index.qmd not in git&#10;cell:&#10;  with chronex.step('plot') as s:&#10;" in dot

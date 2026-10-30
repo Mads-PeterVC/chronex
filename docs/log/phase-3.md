@@ -46,3 +46,40 @@ but recorded `ipykernel_launcher.py` as its code. It now records the document Qu
 - Try it on a real figure from temper, with a sweep of hundreds of runs.
 - A site-wide page listing every figure and its flags.
 - PDF output, where tooltips do not exist.
+
+## A cold test of the Quarto tab
+
+An agent given only the README built a four-step pipeline (simulate, fit, aggregate, plot)
+with every markup style, made a planted mistake (one seed re-simulated, its fit not re-run),
+and rendered a site. The mistake showed: "Provenance ⚠ 2" on the tab, coloured nodes, and
+"re-run fit" on hover. The bar chart itself looked normal.
+
+**Friction:**
+
+- Nothing said which Python Quarto runs, or what that environment needs. An inherited
+  `VIRTUAL_ENV` sent Quarto, and the agent's installs, into another project's environment.
+- The flags were visible only on hover.
+- Tooltips were thin:
+  - a Python script run with `chronex run` showed an empty `command =`, as it records only
+    its script's arguments;
+  - a cell step said "not in git" rather than naming the document and its cell;
+  - the host line was noise;
+  - edge tooltips were indented.
+- Also reported, and left for later:
+  - flag text gives the same second for both versions of a file, and does not name runs by
+    their parameters;
+  - a folded node is coloured as a whole when one run is at fault;
+  - one figure reading two run directories merges them into one graph.
+
+**Made:**
+
+- A skill for agents, `src/chronex/agent/SKILL.md`, installed with
+  `chronex agent install-skill [--project]`. It covers marking up steps, checking, and
+  setting up Quarto: the packages its kernel needs, and `QUARTO_PYTHON` or an activated
+  environment.
+- The flags are listed under the graph, errors first.
+- Tooltips show:
+  - a recorded script's command (`python plot.py --dpi 90`);
+  - the file the code ran from and its version (`fit.py at 988edb4*`);
+  - a cell's source.
+  The host line is gone.
