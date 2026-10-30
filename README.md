@@ -12,8 +12,8 @@ uv add git+https://github.com/Mads-PeterVC/chronex      # into a uv project
 uv pip install -e /path/to/chronex                       # or a local checkout
 ```
 
-chronex has no dependencies. It must be installed in the environment the steps run in,
-including on a cluster or in a container.
+chronex depends only on rich-click, for its command line. It must be installed in the
+environment the steps run in, including on a cluster or in a container.
 
 ## How it works
 
