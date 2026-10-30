@@ -79,8 +79,8 @@ class Graph:
                     todo.append(link.producer)
         return seen
 
-    def current(self) -> set[str]:
-        """Steps that still matter: those not redone by a later run, and their ancestry.
+    def redone(self) -> set[str]:
+        """Steps redone by a later run.
 
         A step is redone when every path it wrote (or declared and did not write) was written
         again later on the same host. A step that wrote nothing is redone by a later run with
@@ -103,10 +103,23 @@ class Graph:
             key = (r["name"], r["cwd"], _host(r), json.dumps(r["params"], sort_keys=True))
             return any(t > _end(r) for t in runs[key])
 
-        keep = {sid for sid, r in self.records.items() if not redone(r)}
+        return {sid for sid, r in self.records.items() if redone(r)}
+
+    def current(self) -> set[str]:
+        """Steps that still matter: those not redone by a later run, and their ancestry."""
+        keep = set(self.records) - self.redone()
         for sid in list(keep):
             keep |= self.ancestry(sid)
         return keep
+
+    def kept_by(self, step_id: str) -> list[str]:
+        """The steps not redone that a redone step is still upstream of: why it is current."""
+        redone = self.redone()
+        if step_id not in redone:
+            return []
+        return sorted(
+            sid for sid in self.records if sid not in redone and step_id in self.ancestry(sid)
+        )
 
     def lineage(self, path: str | os.PathLike[str]) -> set[str]:
         """The steps that wrote the current content of a file, and their ancestry."""
@@ -273,8 +286,9 @@ def build(records: list[Record]) -> Graph:
         writers=writers,
     )
     failed_parents = {r["parent"] for r in records if r["status"] == "failed" and r["parent"]}
+    redone = graph.redone()
     for record in records:
-        _check_record(record, graph, writers, failed_parents)
+        _check_record(record, graph, writers, failed_parents, record["id"] in redone)
     _check_mixed(graph, writers)
     return graph
 
@@ -410,6 +424,7 @@ def _check_record(
     graph: Graph,
     writers: dict[tuple[str, str], list[tuple[Record, str]]],
     failed_parents: set[str],
+    redone: bool,
 ) -> None:
     sid = record["id"]
     flags = graph.flags[sid]
@@ -445,6 +460,11 @@ def _check_record(
         ]
         if later:
             newest = max(later, key=lambda r: r["ended"])
+            advice = (
+                f"{record['name']} has been re-run since"
+                if redone
+                else f"re-run {record['name']} to use the new version"
+            )
             flags.append(
                 Flag(
                     "warn",
@@ -452,7 +472,7 @@ def _check_record(
                     f"{inp['rel']} is the version {producer['name']} wrote at "
                     f"{producer['ended'][11:19]} UTC; {newest['name']} rewrote "
                     f"{os.path.relpath(link.path or '', record['cwd'])} at "
-                    f"{newest['ended'][11:19]} UTC: re-run {record['name']} to use the new version",
+                    f"{newest['ended'][11:19]} UTC: {advice}",
                     [producer["id"], newest["id"]],
                     inp["path"],
                 )

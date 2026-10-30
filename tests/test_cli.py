@@ -213,3 +213,18 @@ def test_forget_retires_a_failed_experiment(
     assert check("--strict", capsys=capsys)[0] == 0
     assert len(list(Path(".chronex/forgotten").glob("*.json"))) == 1
     assert main(["forget", "nothing-by-this-name"]) == 2
+
+
+def test_check_names_the_steps_that_keep_an_older_run_current(
+    workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make(Path("a"), "v1" * 40)
+    use(Path("a"), Path("b"))
+    with chronex.step("peek") as s:
+        Path(s.input("b")).read_text()
+    make(Path("a"), "v2" * 40)
+    use(Path("a"), Path("b"))  # the old use is redone, but peek still read its b
+    out = check(capsys=capsys)[1]
+    (line,) = [line for line in out.splitlines() if "  use  " in line]
+    assert "use has been re-run since [an older run" in line
+    assert "still current because peek used its output: re-run or forget peek" in line

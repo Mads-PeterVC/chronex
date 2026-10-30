@@ -46,6 +46,7 @@ def _check(args: argparse.Namespace) -> int:
     found = [
         (sid, f) for sid, f in graph.all_flags() if sid in scope and (f.level != "info" or args.all)
     ]
+    kept = {sid: graph.kept_by(sid) for sid in {sid for sid, _ in found}}
     if args.json:
         entries = [
             {
@@ -54,6 +55,7 @@ def _check(args: argparse.Namespace) -> int:
                 "status": graph.records[sid]["status"],
                 "cwd": graph.records[sid]["cwd"],
                 "record": graph.records[sid].get("_file"),
+                "kept_by": kept[sid],
                 **f.to_dict(),
             }
             for sid, f in found
@@ -65,7 +67,7 @@ def _check(args: argparse.Namespace) -> int:
             record = graph.records[sid]
             label = f"{flag.level:5} {flag.code:22} {record['name']:10} {sid[-8:]}"
             prefix, reset = (COLORS[flag.level], "\033[0m") if color else ("", "")
-            print(f"{prefix}{label}{reset}  {flag.text}")
+            print(f"{prefix}{label}{reset}  {flag.text}{_kept(graph, kept[sid])}")
         links = sum(1 for sid in scope for link in graph.links[sid] if link.producer)
         origins = {
             inp["path"]
@@ -91,6 +93,16 @@ def _check(args: argparse.Namespace) -> int:
             )
     failing = ("error", "warn") if args.strict else ("error",)
     return 1 if any(f.level in failing for _, f in found) else 0
+
+
+def _kept(graph: graphs.Graph, users: list[str]) -> str:
+    """Why a redone step's flag is still shown: the current steps that used its output."""
+    if not users:
+        return ""
+    names = ", ".join(sorted({graph.records[u]["name"] for u in users}))
+    return (
+        f" [an older run, still current because {names} used its output: re-run or forget {names}]"
+    )
 
 
 def _files(paths: list[str], limit: int = 2) -> str:
