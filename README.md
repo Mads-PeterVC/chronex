@@ -134,7 +134,7 @@ A step is named after its function, its block's name, or its script (`inline` fo
 | `ambiguous-input` | warn / info | An input's content matches unrelated outputs (warn), or is too small to link (info). |
 | `superseded-input` | warn | An input was later rewritten at its path, e.g. by a re-run. |
 | `mixed-lineage` | warn | A step's inputs descend from different versions of the same file. |
-| `untracked-workers` | warn | The step started worker processes (multiprocessing); their file access is unseen. |
+| `untracked-workers` | warn / info | The step started worker processes (multiprocessing); their file access is unseen. Info once the step declares its inputs. |
 | `unrecorded-code` | warn | The code was piped in on stdin, so the record does not hold it. |
 | `subprocess` | info | The step ran another program; its file access is only known from declarations. |
 | `undeclared-write` | info | The step wrote a file it did not declare. |

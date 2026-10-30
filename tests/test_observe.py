@@ -101,6 +101,19 @@ def test_worker_processes_are_flagged(workdir: Path) -> None:
     assert flag_codes(workdir) == ["untracked-workers"]
 
 
+def test_workers_whose_files_are_declared_are_only_noted(workdir: Path) -> None:
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    Path("secret").write_text("s")
+    with chronex.step("parallel") as s:
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(1, mp_context=context) as pool:
+            assert list(pool.map(read_secret, [s.input(str(workdir / "secret"))])) == ["s"]
+        Path(s.output("out")).write_text("x")
+    assert flag_codes(workdir) == []
+
+
 def test_subprocesses_are_not_workers(workdir: Path) -> None:
     import subprocess
 

@@ -523,12 +523,17 @@ def _check_record(
             )
         )
     if record["observed"].get("workers"):
+        # Declared files say what the workers used; with none, nothing does.
+        if any(inp["how"] == "declared" for inp in record["inputs"]):
+            level, known = "info", "is taken from the step's declarations"
+        else:
+            level, known = "warn", "is unknown: declare it in the step that starts them"
         flags.append(
             Flag(
-                "warn",
+                level,
                 "untracked-workers",
                 "started worker processes (multiprocessing, concurrent.futures, os.fork); what "
-                "they read and wrote is only known from declarations",
+                f"they read and wrote {known}",
             )
         )
     if record["observed"]["subprocesses"]:
