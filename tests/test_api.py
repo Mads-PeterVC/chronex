@@ -185,3 +185,24 @@ def test_code_from_stdin_is_flagged(workdir: Path) -> None:
     assert record["code"]["unrecorded"] == "read from stdin"
     graph = graphs.build([record])
     assert [f.code for _, f in graph.all_flags()] == ["unrecorded-code"]
+
+
+def test_a_step_in_a_quarto_cell_records_the_document_and_the_cell(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    import types
+
+    shell = types.SimpleNamespace(user_ns={"In": ["", "with chronex.step('plot'):\n    pass"]})
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: shell  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setenv("QUARTO_DOCUMENT_PATH", str(workdir))
+    monkeypatch.setenv("QUARTO_DOCUMENT_FILE", "index.qmd")
+    Path("index.qmd").write_text("# a document")
+    with chronex.step("plot"):
+        pass
+    (record,) = records(workdir)
+    assert record["code"]["entry"] == os.path.realpath("index.qmd")
+    assert str(workdir.resolve() / "index.qmd") in record["code"]["files"]
+    assert record["code"]["inline"]["source"] == "with chronex.step('plot'):\n    pass"

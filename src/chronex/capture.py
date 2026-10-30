@@ -79,12 +79,31 @@ def _local_module_files(roots: set[str]) -> dict[str, str]:
     return files
 
 
+def _document() -> str | None:
+    """The Quarto document whose cells this process (a Jupyter kernel) is running."""
+    directory, name = os.environ.get("QUARTO_DOCUMENT_PATH"), os.environ.get("QUARTO_DOCUMENT_FILE")
+    if directory and name and _cell() is not None:
+        return os.path.join(directory, name)
+    return None
+
+
+def _cell() -> str | None:
+    """The source of the cell being run, in IPython or a Jupyter kernel."""
+    ipython = sys.modules.get("IPython")
+    shell = ipython.get_ipython() if ipython else None
+    history = shell.user_ns.get("In") if shell is not None else None
+    return str(history[-1]) if history else None
+
+
 def main_file() -> str | None:
-    """The script being run.
+    """The script being run, or the Quarto document whose cells a kernel runs.
 
     `__main__.__file__`, or `sys.argv[0]` when that is gone: Python 3.15 clears it before
     `atexit` handlers run.
     """
+    document = _document()
+    if document:
+        return document
     main = getattr(sys.modules.get("__main__"), "__file__", None)
     if isinstance(main, str):
         return main
@@ -94,7 +113,10 @@ def main_file() -> str | None:
 
 
 def inline_source() -> str | None:
-    """The code given with `python -c`, if that is how this process runs."""
+    """The code given with `python -c`, or the notebook cell being run."""
+    cell = _cell()
+    if cell is not None:
+        return cell
     argv = getattr(sys, "orig_argv", [])
     if sys.argv[:1] != ["-c"] or "-c" not in argv[:-1]:
         return None
