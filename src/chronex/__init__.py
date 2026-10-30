@@ -1,6 +1,6 @@
 """chronex: provenance records for computational research.
 
-Mark up a step in whichever way costs the least in that piece of code::
+Mark up a step in whichever way costs the least in that piece of code:
 
     @chronex.step                                   # a function with typed paths
     def fit(data: In[Path], model: Out[Path], alpha: float = 1e-3) -> None: ...

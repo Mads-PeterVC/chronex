@@ -164,12 +164,12 @@ def step(arg: Any = None, /, **params: Any) -> Any:
     """Record a function call, or a block, as a step.
 
     As a decorator, parameters annotated `In[...]` / `Out[...]` are the step's files and
-    every other argument is a recorded parameter::
+    every other argument is a recorded parameter:
 
         @chronex.step
         def fit(data: In[Path], model: Out[Path], alpha: float = 1e-3) -> None: ...
 
-    As a block, files are declared where they are used::
+    As a block, files are declared where they are used:
 
         with chronex.step("fit", alpha=alpha) as s:
             x = np.load(s.input("data.npy"))
