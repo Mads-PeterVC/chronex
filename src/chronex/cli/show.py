@@ -7,6 +7,7 @@ import os
 import rich_click as click
 
 from chronex.cli._common import files, load, roots_argument
+from chronex.dot import lineage, to_dot
 
 
 @click.command(
@@ -15,13 +16,22 @@ from chronex.cli._common import files, load, roots_argument
 )
 @click.argument("path")
 @roots_argument
-def show(path: str, roots: tuple[str, ...]) -> int:
+@click.option(
+    "--dot",
+    "as_dot",
+    is_flag=True,
+    help="Print Graphviz source instead: one node per step, details in tooltips.",
+)
+def show(path: str, roots: tuple[str, ...], as_dot: bool) -> int:
     """Print the upstream lineage of a file, from records below ROOTS (default: .)."""
     graph = load(roots)
     producers = graph.producers_of(path)
     if not producers:
         print(graph.why_unknown(path))
         return 2
+    if as_dot:
+        print(to_dot(lineage(graph, path)), end="")
+        return 0
     seen: set[str] = set()
     origins: set[str] = set()  # each named once, not under every step that read it
 
