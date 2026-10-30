@@ -253,3 +253,15 @@ def test_superseded_input_names_one_path_and_what_to_rerun(workdir: Path) -> Non
     (text,) = [f.text for _, f in graph.all_flags() if f.code == "superseded-input"]
     assert text.count("sub/a") == 2
     assert text.endswith("re-run use to use the new version")
+
+
+def test_a_step_links_to_the_output_of_a_step_nested_in_it(workdir: Path) -> None:
+    with chronex.step("outer") as outer:
+        make(Path("tiny.txt"), "x")
+        outer.input("tiny.txt")
+        Path(outer.output("total.txt")).write_text(Path("tiny.txt").read_text())
+    graph = graphs.build(graphs.load(workdir))
+    assert codes(graph) == {}
+    (record,) = [r for r in graph.records.values() if r["name"] == "outer"]
+    (link,) = graph.links[record["id"]]
+    assert graph.records[link.producer]["name"] == "make"

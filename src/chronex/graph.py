@@ -4,10 +4,10 @@ No step knows about any other. Steps are linked afterwards: an input is produced
 that wrote a file with the same hash. Copies (collecting, staging, rsync) are therefore
 transparent, and the checks below look for the ways a chain of steps goes wrong.
 
-A producer must have finished before its consumer started, and one that wrote the very path
-read wins. Content found only at other paths links when it has a single original source;
-otherwise, or when it is too small to identify anything, the input is ambiguous: reported, but
-not part of the lineage.
+A producer must have finished before its consumer started (or be nested inside it), and one
+that wrote the very path read wins. Content found only at other paths links when it has a
+single original source; otherwise, or when it is too small to identify anything, the input is
+ambiguous: reported, but not part of the lineage.
 """
 
 from __future__ import annotations
@@ -243,6 +243,7 @@ def build(records: list[Record]) -> Graph:
             entry["locations"].append(location)
 
     for record in records:
+        record["_enclosing"] = _enclosing(record, by_id)
         for path, sha, kind in _outputs(record):
             produced[sha].append((record, path))
             writers[_host(record), path].append((record, sha))
@@ -276,6 +277,16 @@ def build(records: list[Record]) -> Graph:
         _check_record(record, graph, writers, failed_parents)
     _check_mixed(graph, writers)
     return graph
+
+
+def _enclosing(record: Record, by_id: dict[str, Record]) -> list[str]:
+    """Ids of the steps a step ran inside, innermost first."""
+    found: list[str] = []
+    parent = record.get("parent")
+    while parent in by_id and parent not in found:
+        found.append(parent)
+        parent = by_id[parent].get("parent")
+    return found
 
 
 def _expand(inputs: list[dict[str, Any]], produced: dict[str, Any]) -> list[dict[str, Any]]:
@@ -322,6 +333,16 @@ def _input_shas(record: Record) -> set[str]:
     return found
 
 
+def _before(producer: Record, consumer: Record) -> bool:
+    """Whether a step could have written something another step read: it ended before the
+    reader started, or ran inside it (a nested step ends after its enclosing step starts)."""
+    if producer["id"] == consumer["id"]:
+        return False
+    return bool(producer["ended"] <= consumer["started"]) or consumer["id"] in producer.get(
+        "_enclosing", ()
+    )
+
+
 def _resolve(
     record: Record,
     inp: dict[str, Any],
@@ -329,10 +350,8 @@ def _resolve(
     writers: dict[tuple[str, str], list[tuple[Record, str]]],
     flags: dict[str, list[Flag]],
 ) -> Link:
-    sid, started, host, sha = record["id"], record["started"], _host(record), inp["sha"]
-    candidates = [
-        (r, p) for r, p in produced.get(sha or "", []) if r["id"] != sid and r["ended"] <= started
-    ]
+    sid, host, sha = record["id"], _host(record), inp["sha"]
+    candidates = [(r, p) for r, p in produced.get(sha or "", []) if _before(r, record)]
     same_path = [(r, p) for r, p in candidates if _host(r) == host and p == inp["path"]]
     if same_path:
         producer, path = max(same_path, key=lambda item: item[0]["ended"])
@@ -368,9 +387,7 @@ def _resolve(
         flags[sid].append(flag)
         return Link(producer=None, path=None, origin=False, ambiguous=ambiguous)
     earlier = [
-        (r, written)
-        for r, written in writers.get((host, inp["path"]), [])
-        if r["id"] != sid and r["ended"] <= started
+        (r, written) for r, written in writers.get((host, inp["path"]), []) if _before(r, record)
     ]
     if earlier and sha:
         writer, written = max(earlier, key=lambda item: item[0]["ended"])
