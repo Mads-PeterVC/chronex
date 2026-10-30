@@ -1,35 +1,12 @@
-import contextlib
-import json
+"""How inputs link to the steps that produced them: by content, in time, through copies."""
+
 import shutil
 from pathlib import Path
 
 import chronex
 from chronex import In, Out
 from chronex import graph as graphs
-
-
-@chronex.step
-def make(target: Out[Path], value: str) -> None:
-    target.write_text(value)
-
-
-@chronex.step
-def copy(source: In[Path], target: Out[Path]) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
-
-
-@chronex.step
-def use(source: In[Path], target: Out[Path]) -> None:
-    target.write_text(source.read_text() + "!")
-
-
-def codes(graph: graphs.Graph) -> dict[str, list[str]]:
-    found: dict[str, list[str]] = {}
-    for sid, flag in graph.all_flags():
-        if flag.level != "info":
-            found.setdefault(flag.code, []).append(graph.records[sid]["name"])
-    return found
+from tests.helpers import codes, copy, make, use
 
 
 def test_copies_link_by_content(workdir: Path) -> None:
@@ -50,34 +27,6 @@ def test_edit_between_steps_is_an_error(workdir: Path) -> None:
     use(Path("a"), Path("b"))
     graph = graphs.build(graphs.load(workdir))
     assert codes(graph) == {"modified-after-write": ["use"]}
-
-
-def test_rerun_supersedes_and_mixes(workdir: Path) -> None:
-    make(Path("a"), "v1")
-    use(Path("a"), Path("b1"))
-    make(Path("a"), "v2")
-    use(Path("a"), Path("b2"))
-
-    @chronex.step
-    def combine(parts: In[list[Path]], target: Out[Path]) -> None:
-        target.write_text("".join(p.read_text() for p in parts))
-
-    combine([Path("b1"), Path("b2")], Path("c"))
-    graph = graphs.build(graphs.load(workdir))
-    assert codes(graph) == {"superseded-input": ["use"], "mixed-lineage": ["combine"]}
-
-
-def test_failed_producer(workdir: Path) -> None:
-    @chronex.step
-    def flaky(target: Out[Path]) -> None:
-        target.write_text("written")
-        raise RuntimeError("after writing")
-
-    with contextlib.suppress(RuntimeError):
-        flaky(Path("a"))
-    use(Path("a"), Path("b"))
-    graph = graphs.build(graphs.load(workdir))
-    assert codes(graph) == {"failed": ["flaky"], "failed-producer": ["use"]}
 
 
 def test_directory_outputs_link_to_files_inside(workdir: Path) -> None:
@@ -152,67 +101,6 @@ def test_trivial_content_does_not_link_across_paths(workdir: Path) -> None:
     assert [f.level for f in flags] == ["info"]
 
 
-def test_a_cycle_of_links_does_not_crash(workdir: Path) -> None:
-    Path("a").write_text("content copied back and forth between two files " * 2)
-    copy(Path("a"), Path("b"))
-    copy(Path("b"), Path("a"))
-    # Equal timestamps (coarse clocks, or one clock across fast steps) allow a cycle.
-    for record in graphs.load(workdir):
-        record["started"] = record["ended"] = "2026-01-01T00:00:00.000+00:00"
-        Path(record.pop("_file")).write_text(json.dumps(record))
-    graph = graphs.build(graphs.load(workdir))
-    assert len(graph.records) == 2
-
-
-def test_a_failure_is_reported_once_at_the_innermost_step(workdir: Path) -> None:
-    @chronex.step
-    def inner() -> None:
-        raise ValueError("deep down")
-
-    with contextlib.suppress(ValueError), chronex.step("outer"):
-        inner()
-    graph = graphs.build(graphs.load(workdir))
-    assert codes(graph) == {"failed": ["inner"]}
-
-
-def test_a_failed_step_is_not_also_missing_its_outputs(workdir: Path) -> None:
-    @chronex.step
-    def broken(target: Out[Path]) -> None:
-        raise RuntimeError("before writing")
-
-    with contextlib.suppress(RuntimeError):
-        broken(Path("out/never.txt"))
-
-    @chronex.step
-    def lazy(target: Out[Path]) -> None:
-        pass
-
-    lazy(Path("out/never.txt"))
-    graph = graphs.build(graphs.load(workdir))
-    assert codes(graph) == {"missing-output": ["lazy"], "failed": ["broken"]}
-    (text,) = [f.text for _, f in graph.all_flags() if f.code == "missing-output"]
-    assert text == "declared output out/never.txt was not written"
-
-
-def test_flag_times_say_they_are_utc(workdir: Path) -> None:
-    make(Path("a"), "v1")
-    use(Path("a"), Path("b1"))
-    make(Path("a"), "v2")
-    graph = graphs.build(graphs.load(workdir))
-    (text,) = [f.text for _, f in graph.all_flags() if f.code == "superseded-input"]
-    assert text.count(" UTC") == 2
-
-
-def test_report_creates_its_directory(workdir: Path) -> None:
-    from chronex.cli import main
-
-    make(Path("a"), "v1")
-    assert main(["report", "a", ".", "-o", "deep/er/report.html"]) == 0
-    html = Path("deep/er/report.html").read_text()
-    assert html.startswith("<!doctype html>")
-    assert "fonts.googleapis" not in html
-
-
 def test_a_directory_input_links_to_the_steps_that_wrote_its_files(workdir: Path) -> None:
     Path("fits").mkdir()
     for i in range(2):
@@ -242,17 +130,6 @@ def test_a_directory_of_raw_files_stays_one_origin(workdir: Path) -> None:
     (record,) = graph.records.values()
     assert [i["rel"] for i in record["inputs"]] == ["raw"]
     assert graph.links[record["id"]][0].origin
-
-
-def test_superseded_input_names_one_path_and_what_to_rerun(workdir: Path) -> None:
-    Path("sub").mkdir()
-    make(Path("sub/a"), "v1")
-    use(Path("sub/a"), Path("b"))
-    make(Path("sub/a"), "v2")
-    graph = graphs.build(graphs.load(workdir))
-    (text,) = [f.text for _, f in graph.all_flags() if f.code == "superseded-input"]
-    assert text.count("sub/a") == 2
-    assert text.endswith("re-run use to use the new version")
 
 
 def test_a_step_links_to_the_output_of_a_step_nested_in_it(workdir: Path) -> None:
