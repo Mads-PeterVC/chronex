@@ -33,12 +33,24 @@ from chronex.record import Step
 roots: list[str] = ["."]
 
 FENCE = "`" * 3
+# Quarto draws every diagram in a 7 by 5 inch box, which shrinks a long lineage; this gives
+# each graph its natural size (Graphviz points, at 96 px per inch), up to the column width.
 # Graphviz puts a tooltip on a link's title attribute, which browsers do not show inside SVG;
 # this turns each into the <title> element they do show, and keeps the links from navigating.
 SCRIPT = """
 ```{=html}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".chronex-lineage svg").forEach((svg) => {
+    const box = svg.viewBox.baseVal;
+    if (!box || !box.width) return;
+    svg.setAttribute("width", box.width * 4 / 3);
+    svg.setAttribute("height", box.height * 4 / 3);
+    svg.style.maxWidth = "100%";
+    svg.style.height = "auto";
+    svg.style.display = "block";
+    svg.style.margin = "0 auto";
+  });
   document.querySelectorAll(".chronex-lineage svg a[title]").forEach((a) => {
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = a.getAttribute("title");
@@ -60,14 +72,12 @@ def figure(
     *,
     label: str | None = None,
     search: list[str] | None = None,
-) -> str:
-    """Show a figure in a tabset with its provenance, and return the markdown.
+) -> None:
+    """Show a figure in a tabset with its provenance.
 
     `label` gives the figure a cross-reference id (`fig-<label>`); `search` overrides `roots`.
     """
-    text = markdown(path, caption, label=label, search=search)
-    _display(text)
-    return text
+    _display(markdown(path, caption, label=label, search=search))
 
 
 @contextmanager
@@ -100,12 +110,14 @@ def markdown(
 ) -> str:
     """The tabset for a figure: the figure, then its lineage."""
     global _script_shown
-    rel = os.fspath(path)
     graph = graphs.build(graphs.load(*(search or roots)))
+    # Markdown paths are relative to the document, which cells need not run in.
+    document = os.environ.get("QUARTO_DOCUMENT_PATH") or os.getcwd()
+    shown = os.path.relpath(os.path.abspath(path), document)
     ident = f"#fig-{label}" if label else ""
-    image = f"![{caption or ''}]({rel})" + (f"{{{ident}}}" if ident else "")
+    image = f"![{caption or ''}]({shown})" + (f"{{{ident}}}" if ident else "")
     try:
-        found = lineage(graph, rel)
+        found = lineage(graph, path)
     except LookupError as error:
         tab, body = "Provenance", f"No recorded lineage: {error}."
     else:

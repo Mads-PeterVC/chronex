@@ -1,5 +1,6 @@
 """Figures in a Quarto document: a tabset of the figure and its provenance."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -22,8 +23,8 @@ def plot() -> None:
 
 def test_a_figure_comes_with_its_lineage(workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
     plot()
-    text = cq.figure("figure.png", caption="A figure", label="data")
-    assert capsys.readouterr().out == text + "\n"  # printed, outside a notebook
+    cq.figure("figure.png", caption="A figure", label="data")
+    text = capsys.readouterr().out  # printed, outside a notebook
     assert text.startswith("::: {.panel-tabset}\n\n## Figure\n\n![A figure](figure.png){#fig-data}")
     assert "\n## Provenance\n" in text
     assert "```{dot}\ndigraph lineage {" in text
@@ -63,3 +64,47 @@ def test_a_figure_made_in_a_cell_is_recorded(
     out = capsys.readouterr().out
     assert "![Scatter](figures/scatter.png)" in out
     assert '"step:scatter"' in out
+
+
+def test_the_figure_path_is_relative_to_the_document(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    Path("work").mkdir()
+    monkeypatch.setenv("QUARTO_DOCUMENT_PATH", str(workdir))
+    monkeypatch.chdir("work")
+    plot()
+    assert "![](work/figure.png)" in cq.markdown("figure.png")
+
+
+@pytest.mark.toy
+def test_the_example_site_renders(tmp_path: Path) -> None:
+    """examples/quarto over the toy workflow: two figures, each with its lineage drawn."""
+    import shutil
+    import subprocess
+    import sys
+
+    pytest.importorskip("numpy")
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("ipykernel")
+    if not shutil.which("quarto"):
+        pytest.skip("needs quarto")
+    examples = Path(__file__).parents[1] / "examples"
+    site = tmp_path / "examples" / "quarto"
+    shutil.copytree(
+        examples / "quarto", site, ignore=shutil.ignore_patterns("work", "_site", ".quarto")
+    )
+    shutil.copytree(examples / "toy-workflow", tmp_path / "examples" / "toy-workflow")
+    result = subprocess.run(
+        ["quarto", "render"],
+        cwd=site,
+        env={**os.environ, "QUARTO_PYTHON": sys.executable},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    html = (site / "_site" / "index.html").read_text()
+    assert html.count('<div class="chronex-lineage">') == 2
+    assert html.count("<svg") == 2
+    assert "Provenance ⚠ 7" in html
+    assert '"step:energy"' not in html  # the graph is drawn, not shown as source
+    assert (site / "_site" / "work" / "figures" / "energy.png").exists()

@@ -1,0 +1,55 @@
+---
+title: Figures with their provenance
+jupyter: python3
+---
+
+Each figure below sits in a tabset: the figure, then its lineage as chronex recorded it. A step
+is one node, however many times it ran; hover a step for its parameters, code version and
+flags. The toy workflow behind these figures runs with four planted mistakes, so some steps are
+flagged.
+
+```{python}
+#| include: false
+# Run the toy workflow once, with its planted mistakes, into work/.
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+if not Path("work").exists():
+    drive = Path("../toy-workflow/drive.py").resolve()
+    subprocess.run([sys.executable, drive, "decorator", "work", "--faults"], check=True)
+os.chdir("work")
+```
+
+## A figure the pipeline wrote
+
+The heat capacity curves come from the toy workflow's last step, `plot`.
+
+```{python}
+import chronex.quarto as cq
+
+cq.figure("results/cv.png", caption="Heat capacity of the toy model", label="cv")
+```
+
+## A figure made in the document
+
+This one is drawn here, in the cell: `cq.make_figure` records the cell as a step, so its
+lineage joins the pipeline's.
+
+```{python}
+import matplotlib.pyplot as plt
+import numpy as np
+
+with cq.make_figure("figures/energy.png", caption="Energy against temperature") as s:
+    curves = np.genfromtxt(s.input("results/curves.csv"), delimiter=",", names=True)
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    for seed in np.unique(curves["seed"]):
+        rows = curves[curves["seed"] == seed]
+        ax.plot(rows["temperature"], rows["energy"], label=f"seed {seed:g}")
+    ax.set(xlabel="temperature", ylabel="energy per site")
+    ax.legend(frameon=False)
+    Path("figures").mkdir(exist_ok=True)
+    fig.savefig("figures/energy.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+```

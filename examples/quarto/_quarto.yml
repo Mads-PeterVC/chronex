@@ -1,0 +1,13 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: chronex provenance tabs
+
+format:
+  html:
+    theme: cosmo
+
+execute:
+  echo: false
