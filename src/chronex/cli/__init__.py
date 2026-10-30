@@ -1,4 +1,4 @@
-"""Command line: `chronex run`, `check`, `show`, `report` and `forget`, one module each."""
+"""Command line: `chronex run`, `check`, `show`, `report`, `forget` and `agent`, one module each."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import sys
 
 import rich_click as click
 
+from chronex.cli.agent import agent
 from chronex.cli.check import check
 from chronex.cli.forget import forget
 from chronex.cli.report import report
@@ -19,7 +20,7 @@ def chronex() -> None:
     linked into a lineage you can check."""
 
 
-for command in (run, check, show, report, forget):
+for command in (run, check, show, report, forget, agent):
     chronex.add_command(command)
 
 

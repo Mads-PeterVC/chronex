@@ -112,7 +112,8 @@ with cq.make_figure("figures/energy.png", caption="Energy") as s:  # one drawn i
 figure's lineage joins the pipeline's. Records are searched for below the document's
 directory; set `cq.roots` to look elsewhere. Quarto draws the graphs itself, so Graphviz need
 not be installed. `chronex show FILE --dot` prints the same graph's source. See
-`examples/quarto/`: `uv sync --group examples`, then `quarto render` there.
+`examples/quarto/`: `uv sync --group examples`, then `quarto render` there. Quarto must run
+Python in an environment with chronex installed; the [skill](#for-agents) says how.
 
 ## Which markup to use
 
@@ -132,6 +133,18 @@ declare the worker's files in the step that starts the pool.
 
 A step is named after its function, its block's name, or its script (`inline` for
 `python -c`); `name=` or `--name` overrides that.
+
+## For agents
+
+chronex comes with a skill for Claude Code: how to mark up steps, check a lineage, and set up
+Quarto to show figures with their provenance.
+
+```bash
+chronex agent install-skill            # for all projects, in ~/.claude/skills
+chronex agent install-skill --project  # for this project, in .claude/skills
+```
+
+The skill is a Markdown file, `src/chronex/agent/SKILL.md`, which other agents can read too.
 
 ## Words
 
@@ -172,6 +185,7 @@ chronex show FILE [ROOTS…] [--dot]
 chronex report FILE [ROOTS…] [-o lineage.html]
 chronex run [--name N] [--in PATH…] [--out PATH…] [--watch DIR…] [-q] -- COMMAND…
 chronex forget STEP… [--root DIR] [-n]
+chronex agent install-skill [--project] [--overwrite]
 ```
 
 `ROOTS` defaults to the current directory; records are found anywhere below it, so pass the
