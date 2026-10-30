@@ -36,8 +36,8 @@ but recorded `ipykernel_launcher.py` as its code. It now records the document Qu
   - `figure(path)` shows a tabset with the figure and its lineage, with a one-line summary
     and a flag count in the tab title;
   - `make_figure(path)` records the cell that draws a figure as a step first.
-- `examples/quarto/` renders the toy workflow with its planted faults. Its test renders the
-  site when Quarto is installed.
+- `examples/quarto/` renders the toy workflow twice, cleanly and with its planted faults, so
+  the two lineages can be compared. Its test renders the site when Quarto is installed.
 
 **Next:**
 

@@ -5,37 +5,62 @@ jupyter: python3
 
 Each figure below sits in a tabset: the figure, then its lineage as chronex recorded it. A step
 is one node, however many times it ran; hover a step for its parameters, code version and
-flags. The toy workflow behind these figures runs with four planted mistakes, so some steps are
-flagged.
+flags. The toy workflow behind these figures runs twice: once cleanly, and once with four
+planted mistakes, so the two lineages can be compared.
 
 ```{python}
 #| include: false
-# Run the toy workflow once, with its planted mistakes, into work/.
+# Run the toy workflow twice, into work/clean and work/faulty (with its planted mistakes).
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-if not Path("work").exists():
-    drive = Path("../toy-workflow/drive.py").resolve()
-    subprocess.run([sys.executable, drive, "decorator", "work", "--faults"], check=True)
-os.chdir("work")
+DOCUMENT = Path.cwd()
+drive = (DOCUMENT / "../toy-workflow/drive.py").resolve()
+for name, faults in (("clean", []), ("faulty", ["--faults"])):
+    if not (DOCUMENT / "work" / name).exists():
+        command = [sys.executable, drive, "decorator", f"work/{name}", *faults]
+        subprocess.run(command, check=True, cwd=DOCUMENT)
+
+
+def workspace(name: str) -> None:
+    """Run the next cells where that run of the workflow wrote its records."""
+    os.chdir(DOCUMENT / "work" / name)
 ```
 
-## A figure the pipeline wrote
+## A clean run
 
-The heat capacity curves come from the toy workflow's last step, `plot`.
+The heat capacity curves come from the toy workflow's last step, `plot`. Every step completed,
+and every input is accounted for: nothing is flagged.
 
 ```{python}
 import chronex.quarto as cq
 
-cq.figure("results/cv.png", caption="Heat capacity of the toy model", label="cv")
+workspace("clean")
+cq.figure("results/cv.png", caption="Heat capacity of the toy model", label="cv-clean")
+```
+
+## A run with mistakes
+
+The same figure from the run with planted mistakes:
+
+- a labelling job failed, but its output was collected anyway;
+- a collected file was edited by hand;
+- the fit read a config file it did not declare;
+- the model was refitted halfway through the Monte Carlo scans.
+
+Flagged steps are coloured, and their tooltips say what is wrong.
+
+```{python}
+workspace("faulty")
+cq.figure("results/cv.png", caption="Heat capacity, from the run with mistakes", label="cv")
 ```
 
 ## A figure made in the document
 
-This one is drawn here, in the cell: `cq.make_figure` records the cell as a step, so its
-lineage joins the pipeline's.
+This one is drawn here, in the cell, from the run with mistakes: `cq.make_figure` records the
+cell as a step, so its lineage joins the pipeline's.
 
 ```{python}
 import matplotlib.pyplot as plt

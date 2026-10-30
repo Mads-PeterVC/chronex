@@ -78,7 +78,7 @@ def test_the_figure_path_is_relative_to_the_document(
 
 @pytest.mark.toy
 def test_the_example_site_renders(tmp_path: Path) -> None:
-    """examples/quarto over the toy workflow: two figures, each with its lineage drawn."""
+    """examples/quarto over the toy workflow: three figures, each with its lineage drawn."""
     import shutil
     import subprocess
     import sys
@@ -103,8 +103,9 @@ def test_the_example_site_renders(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr[-2000:]
     html = (site / "_site" / "index.html").read_text()
-    assert html.count('<div class="chronex-lineage">') == 2
-    assert html.count("<svg") == 2
-    assert "Provenance ⚠ 7" in html
+    assert html.count('<div class="chronex-lineage">') == 3
+    assert html.count("<svg") == 3
+    assert html.count("Provenance ⚠ 7") == 2  # the run with mistakes; the clean run has none
+    assert "no flags · 8 steps (14 runs)" in html
     assert '"step:energy"' not in html  # the graph is drawn, not shown as source
-    assert (site / "_site" / "work" / "figures" / "energy.png").exists()
+    assert (site / "_site" / "work" / "faulty" / "figures" / "energy.png").exists()
