@@ -8,8 +8,8 @@ import os
 
 if os.environ.get("CHRONEX_AUTO") == "1":
     try:
-        from chronex import _auto
+        from chronex.runner import process
 
-        _auto.start()
+        process.start()
     except ImportError:  # chronex is not installed in this interpreter
         pass

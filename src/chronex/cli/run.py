@@ -6,7 +6,7 @@ import sys
 
 import rich_click as click
 
-from chronex.runner import run as record_command
+from chronex.runner.command import run as record_command
 
 # Options that take one or more values, as in `--in data/*.csv`; see expand_values.
 MULTIPLE = ("--in", "--out", "--watch")

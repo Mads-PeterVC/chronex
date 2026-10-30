@@ -22,10 +22,9 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import chronex
 from chronex.recording.step import Step
 
-BOOT = str(Path(chronex.__file__).parent / "_boot")
+BOOT = str(Path(__file__).parent / "_boot")
 
 
 def _snapshot(directories: list[str]) -> dict[str, tuple[int, int]]:
