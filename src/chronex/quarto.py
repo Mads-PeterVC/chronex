@@ -169,6 +169,6 @@ def _display(text: str) -> None:
     if ipython is not None and ipython.get_ipython() is not None:
         from IPython.display import Markdown, display  # type: ignore[import-not-found, unused-ignore]
 
-        display(Markdown(text))
+        display(Markdown(text))  # type: ignore[no-untyped-call, unused-ignore]
     else:
         print(text)

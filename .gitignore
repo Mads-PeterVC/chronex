@@ -8,6 +8,7 @@ site/
 examples/toy-workflow/work/
 .chronex/
 
-dev/examples/quarto/work/
+dev/
+examples/quarto/work/
 examples/quarto/_site/
 examples/quarto/.quarto/
