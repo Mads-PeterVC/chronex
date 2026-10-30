@@ -56,6 +56,19 @@ that `chronex run` left its command running on SIGTERM, ran `--in a b`'s `b` as 
 and recorded `python script.py` as two steps; that a named decorator dropped its parameters;
 and that code piped to `python -` was silently not recorded. All are fixed.
 
+**Third round:** a third agent, with the same brief, wrote correct markup in every style from
+the README alone, and every earlier fix held. What it missed most was a way to retire a record:
+a failed experiment or a mistaken command stayed current and warned for good, as did an old
+run kept current by a one-off step that read its output, with advice to re-run a step already
+re-run. `chronex forget` now moves records to `.chronex/forgotten/`, and a flag on an older run
+names the steps keeping it current. `untracked-workers` could not be answered, so `--strict`
+failed for good with a process pool; it is now a note once the step declares its inputs. A
+block reading a file written by a step nested inside it did not link, as the nested step ended
+after the block started; nested steps are now exempt from that order. Exit codes now agree
+(2 when a file has no lineage), `chronex run` reports every step the same way and warns about
+its options after `--`, and `check --json` has a summary. Origin versions and `chronex run`'s
+grandchildren remain known gaps (see [Known gaps](../design.md#known-gaps)).
+
 **Next:**
 
 - A persistent hash cache, and where to keep it on a cluster.

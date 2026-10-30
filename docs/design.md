@@ -30,7 +30,8 @@ It also showed which links could only be guessed.
 
 ## Linking
 
-An input links to a producer only if the producer ended before the consumer started. A step
+An input links to a producer only if the producer ended before the consumer started, or ran
+nested inside the consumer (a block that reads what a step called within it wrote). A step
 that wrote the same path on the same host is preferred, and the latest such step wins. Content
 found only at other paths (a copy, a staged file) links when it has a single original source:
 a step that read the content and wrote it again is a copy, and a chain of copies counts as one
@@ -42,7 +43,9 @@ consumer's is not linked.
 A step is *current* unless a later run redid it: every path it wrote (or declared and did not
 write) was written again later on the same host, or, for a step without outputs, a later run
 has the same name, parameters and directory. `chronex check` looks at current steps and
-everything upstream of them, so a mistake fixed by re-running stops failing the check.
+everything upstream of them, so a mistake fixed by re-running stops failing the check. A
+redone step stays current while a current step used its output; `check` names that step, and
+`chronex forget` retires steps that should not count, such as a failed experiment.
 
 ## Lifecycle
 
@@ -118,6 +121,11 @@ environment variables is recorded.
 - `chronex run` passes SIGTERM to the command it started, not to that command's own children:
   `kill` on `chronex run -- sh -c '…; sleep 60'` ends `sh` and leaves `sleep` running. Slurm
   signals every process of a job, so a time limit is not affected.
+  Starting the command in its own process group would reach them, but would also cut it off
+  from the terminal (input, Ctrl-C), so it is not done.
+- Origin inputs have no recorded writer, so their versions are not tracked: editing a config
+  after the steps that read it is not flagged, and two steps that read different versions of
+  it are not `mixed-lineage`. Only the hash each step read is kept.
 - `chronex run` uses a `sitecustomize` module. That shadows any existing `sitecustomize` in
   the environment.
 - In a container, chronex must be installed in the image. That makes it a grimoire concern.
