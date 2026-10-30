@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import Any
 
 from chronex import graph as graphs
-from chronex.api import step
 from chronex.dot import Lineage, lineage, to_dot
-from chronex.record import Step
+from chronex.recording.markup import step
+from chronex.recording.step import Step
 
 # Directories searched for records; set to include a pipeline's directory elsewhere.
 roots: list[str] = ["."]

@@ -6,9 +6,9 @@ import os
 import sys
 from pathlib import Path
 
-from chronex.api import _finish_at_exit
-from chronex.capture import main_file, script_name
-from chronex.record import Step
+from chronex.recording.code import main_file, script_name
+from chronex.recording.markup import _finish_at_exit
+from chronex.recording.step import Step
 
 
 class _ProcessStep(Step):

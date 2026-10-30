@@ -1,14 +1,11 @@
-"""What ran and where: code identity and a small, safe slice of the environment."""
+"""What ran: the entry script, the step's own file, local modules and their git state."""
 
 from __future__ import annotations
 
 import hashlib
 import os
-import platform
-import socket
 import subprocess
 import sys
-import warnings
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -17,21 +14,7 @@ from chronex import _guard
 from chronex.hashing import file_sha256
 
 # chronex's own modules are recorded by version, not as part of the user's code.
-_CHRONEX_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "")
-
-# Only these environment variables are recorded; the full environment may hold secrets.
-SAFE_VARIABLES = (
-    "SLURM_JOB_ID",
-    "SLURM_ARRAY_JOB_ID",
-    "SLURM_ARRAY_TASK_ID",
-    "SLURM_CLUSTER_NAME",
-    "SLURM_JOB_PARTITION",
-    "SLURM_JOB_NODELIST",
-    "APPTAINER_CONTAINER",
-    "SINGULARITY_CONTAINER",
-    "GRIMOIRE_IMAGE",
-    "SHEPHEX_SHARED",
-)
+_CHRONEX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "")
 
 
 def _git(root: Path, *args: str) -> str | None:
@@ -171,30 +154,3 @@ def _inline() -> dict[str, str] | None:
     if source is None:
         return None
     return {"source": source, "sha": hashlib.sha256(source.encode()).hexdigest()}
-
-
-def _package_versions() -> dict[str, str]:
-    versions = {}
-    for name, module in list(sys.modules.items()):
-        if "." in name or name.startswith("_") or name in sys.stdlib_module_names:
-            continue
-        with warnings.catch_warnings():  # e.g. click deprecates its __version__
-            warnings.simplefilter("ignore", DeprecationWarning)
-            version = getattr(module, "__version__", None)
-        if isinstance(version, str):
-            versions[name] = version
-    from chronex import __version__
-
-    versions["chronex"] = __version__
-    return dict(sorted(versions.items()))
-
-
-def environment() -> dict[str, Any]:
-    return {
-        "host": socket.gethostname(),
-        "python": platform.python_version(),
-        "platform": f"{platform.system()}-{platform.machine()}",
-        "executable": os.path.abspath(sys.executable),
-        "variables": {k: os.environ[k] for k in SAFE_VARIABLES if k in os.environ},
-        "packages": _package_versions(),
-    }

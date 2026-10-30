@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import chronex
-from chronex.record import Step
+from chronex.recording.step import Step
 
 BOOT = str(Path(chronex.__file__).parent / "_boot")
 

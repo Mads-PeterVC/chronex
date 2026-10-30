@@ -17,7 +17,8 @@ step in `.chronex/`; `chronex check` links them by file hash and reports problem
 
 __version__ = "0.0.1"
 
-from chronex.api import IN, OUT, In, Out, input, output, step, track
-from chronex.record import Step, current
+from chronex.recording.lifecycle import current
+from chronex.recording.markup import IN, OUT, In, Out, input, output, step, track
+from chronex.recording.step import Step
 
 __all__ = ["IN", "OUT", "In", "Out", "Step", "current", "input", "output", "step", "track"]

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from chronex.hashing import identify
-from chronex.record import RECORD_DIR
+from chronex.recording.step import RECORD_DIR
 
 Record = dict[str, Any]
 

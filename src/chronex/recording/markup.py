@@ -26,8 +26,9 @@ from typing import (
     overload,
 )
 
-from chronex.capture import main_file, script_name
-from chronex.record import STEP_VARIABLE, Step, current
+from chronex.recording.code import main_file, script_name
+from chronex.recording.lifecycle import current
+from chronex.recording.step import STEP_VARIABLE, Step
 
 T = TypeVar("T")
 P = ParamSpec("P")

@@ -9,127 +9,31 @@ without finishing it. SIGTERM (a Slurm time limit) finishes open steps as failed
 
 from __future__ import annotations
 
-import contextlib
 import datetime as dt
-import hashlib
 import json
 import os
-import signal
 import sys
-import threading
 import traceback
-import types
 import uuid
 from pathlib import Path
 from typing import Any
 
-from chronex import _guard, audit
-from chronex.capture import code_identity, environment, main_file
+from chronex import _guard
 from chronex.hashing import identify
+from chronex.recording import audit
+from chronex.recording.code import code_identity, main_file
+from chronex.recording.environment import environment
+from chronex.recording.lifecycle import catch_sigterm, current, release_sigterm, stack
+from chronex.recording.params import jsonable
 
 SCHEMA = "chronex/0"
 RECORD_DIR = ".chronex"
 # Set while a step runs, so a process it starts knows it was started by one.
 STEP_VARIABLE = "CHRONEX_STEP"
 
-_stack: list[Step] = []
-
-
-def current() -> Step | None:
-    """The innermost active step, if any."""
-    return _stack[-1] if _stack else None
-
-
-def _on_sigterm(signum: int, frame: types.FrameType | None) -> None:
-    """Finish every open step as killed, then die of SIGTERM as the process would have."""
-    for step in list(reversed(_stack)):
-        if step._open:
-            step.finish("killed: SIGTERM")
-    signal.signal(signal.SIGTERM, signal.SIG_DFL)
-    os.kill(os.getpid(), signal.SIGTERM)
-
-
-def _catch_sigterm() -> None:
-    """Install the SIGTERM handler, unless something else already handles SIGTERM."""
-    if threading.current_thread() is not threading.main_thread():
-        return
-    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
-        signal.signal(signal.SIGTERM, _on_sigterm)
-
-
-def _forget_in_child() -> None:
-    """A forked child inherits the parent's open steps, which are the parent's to finish."""
-    for step in _stack:
-        step._open = False
-        audit.unlisten(step._listen)
-    _stack.clear()
-    if signal.getsignal(signal.SIGTERM) is _on_sigterm:
-        with contextlib.suppress(ValueError):  # not the main thread
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-
-
-if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_forget_in_child)
-
-
-def _release_sigterm() -> None:
-    if _stack or threading.current_thread() is not threading.main_thread():
-        return
-    if signal.getsignal(signal.SIGTERM) is _on_sigterm:
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
-
 
 def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds")
-
-
-# Parameters with more values than this are recorded as a summary with a hash.
-MAX_LISTED_VALUES = 100
-
-
-def _summary(value: Any, **fields: Any) -> dict[str, Any]:
-    return {"type": f"{type(value).__module__}.{type(value).__qualname__}", **fields}
-
-
-def _array_sha(value: Any) -> str | None:
-    if getattr(getattr(value, "dtype", None), "hasobject", True):
-        return None  # object arrays hold pointers, not values
-    try:
-        return hashlib.sha256(value.tobytes()).hexdigest()
-    except Exception:
-        return None
-
-
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, os.PathLike):
-        return os.fspath(value)
-    if isinstance(value, dict):
-        return {str(k): _jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set, frozenset)):
-        items = [_jsonable(v) for v in value]
-        if isinstance(value, (set, frozenset)):
-            items.sort(key=repr)
-        if len(items) <= MAX_LISTED_VALUES:
-            return items
-        text = json.dumps(items, sort_keys=True, default=repr)
-        return _summary(value, len=len(items), sha=hashlib.sha256(text.encode()).hexdigest())
-    size = getattr(value, "size", None)
-    if hasattr(value, "shape") and isinstance(size, int) and size > MAX_LISTED_VALUES:
-        dtype = getattr(value, "dtype", None)
-        return _summary(
-            value,
-            shape=list(value.shape),
-            dtype=None if dtype is None else str(dtype),
-            sha=_array_sha(value),
-        )
-    if hasattr(value, "tolist"):  # numpy scalars and small arrays
-        try:
-            return _jsonable(value.tolist())
-        except Exception:  # pragma: no cover
-            pass
-    return repr(value)
 
 
 class Step:
@@ -162,7 +66,7 @@ class Step:
         self.kind = kind
         self.auto = auto
         self.id = f"{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%S}-{name}-{uuid.uuid4().hex[:8]}"
-        self.params = _jsonable(params or {})
+        self.params = jsonable(params or {})
         self.function_file = function_file
         self.function = function
         self.entry = main_file()  # now: by the time the step ends, it may be gone
@@ -235,10 +139,10 @@ class Step:
 
     def start(self) -> Step:
         self._write_start()
-        _catch_sigterm()
+        catch_sigterm()
         self._enclosing_env = os.environ.get(STEP_VARIABLE)
         os.environ[STEP_VARIABLE] = self.name  # inherited by workers and subprocesses
-        _stack.append(self)
+        stack.append(self)
         audit.listen(self._listen)
         self._open = True
         return self
@@ -249,13 +153,13 @@ class Step:
             raise RuntimeError(f"step {self.name} is not running")
         self._open = False
         audit.unlisten(self._listen)
-        if self in _stack:
-            _stack.remove(self)
+        if self in stack:
+            stack.remove(self)
         if self._enclosing_env is None:
             os.environ.pop(STEP_VARIABLE, None)
         else:
             os.environ[STEP_VARIABLE] = self._enclosing_env
-        _release_sigterm()
+        release_sigterm()
         if isinstance(error, str):
             self.status, self.error = "failed", error
         elif error is not None:
