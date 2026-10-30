@@ -147,6 +147,7 @@ chronex check [ROOTS…] [--target FILE] [--history] [--strict] [--all] [--json]
 chronex show FILE [ROOTS…]
 chronex report FILE [ROOTS…] [-o lineage.html]
 chronex run [--name N] [--in PATH…] [--out PATH…] [--watch DIR…] [-q] -- COMMAND…
+chronex forget STEP… [--root DIR] [-n]
 ```
 
 `ROOTS` defaults to the current directory; records are found anywhere below it, so pass the
@@ -156,6 +157,10 @@ source of a copy. `--in`, `--out` and `--watch` take one or more paths; end them
 before the command. `check`
 exits 1 if it finds an error, or a warning with `--strict`, and 0 otherwise, so it can gate a
 pipeline or an agent's work. `--target FILE` checks only that file's lineage.
+
+`forget` retires steps that should not count, such as a failed experiment or a mistaken
+command: give a name, or the 8-character id `check` prints. Their records (and those of steps
+nested in them) move to `.chronex/forgotten/`; move them back to undo.
 
 `CHRONEX_IGNORE` lists extra paths (separated like `PATH`) whose reads and writes are not
 observed, e.g. scratch directories.

@@ -1,4 +1,4 @@
-"""Command line: ``chronex run``, ``chronex check``, ``chronex show`` and ``chronex report``."""
+"""Command line: ``chronex run``, ``check``, ``show``, ``report`` and ``forget``."""
 
 from __future__ import annotations
 
@@ -152,6 +152,45 @@ def _report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _forget(args: argparse.Namespace) -> int:
+    """Move records out of the way, into ``.chronex/forgotten/``, where nothing reads them."""
+    graph = graphs.build(graphs.load(*(args.root or ["."])))
+
+    def matches(wanted: str) -> set[str]:
+        return {
+            sid
+            for sid, r in graph.records.items()
+            if wanted in (sid, r["name"]) or (len(wanted) >= 8 and sid.endswith(wanted))
+        }
+
+    chosen = {sid for wanted in args.steps for sid in matches(wanted)}
+    unknown = [wanted for wanted in args.steps if not matches(wanted)]
+    if unknown:
+        print(f"chronex forget: no record matches {', '.join(unknown)}", file=sys.stderr)
+        return 2
+    # Steps nested inside a forgotten step go with it.
+    chosen |= {sid for sid, r in graph.records.items() if chosen & set(r["_enclosing"])}
+    verb = "would forget" if args.dry_run else "forgot"
+    for sid in sorted(chosen, key=lambda s: graph.records[s]["started"]):
+        record = graph.records[sid]
+        print(f"{verb} {record['name']} {sid[-8:]} [{record['status']}] {record['started'][:19]}")
+        if not args.dry_run:
+            source = Path(record["_file"])
+            target = source.parent / "forgotten" / source.name
+            target.parent.mkdir(exist_ok=True)
+            source.rename(target)
+    users = sorted(
+        {
+            graph.records[sid]["name"]
+            for sid, links in graph.links.items()
+            if sid not in chosen and any(lk.producer in chosen for lk in links)
+        }
+    )
+    if users:
+        print(f"note: {', '.join(users)} read files these steps wrote; re-run them, or forget them")
+    return 0
+
+
 def _run(args: argparse.Namespace) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
@@ -223,6 +262,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--output", default="lineage.html")
     p.add_argument("--title")
     p.set_defaults(func=_report)
+
+    p = sub.add_parser(
+        "forget",
+        help="stop counting steps: a failed experiment, a mistaken command",
+        description="Moves the records of the given steps, and of steps nested inside them, to "
+        ".chronex/forgotten/. Move them back to undo.",
+    )
+    p.add_argument(
+        "steps", nargs="+", help="a step's id (or its last 8 characters, as check shows) or name"
+    )
+    p.add_argument("--root", action="append", help="directory to search for records (default: .)")
+    p.add_argument("-n", "--dry-run", action="store_true", help="only say what would be forgotten")
+    p.set_defaults(func=_forget)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
