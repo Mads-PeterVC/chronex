@@ -13,7 +13,8 @@ import chronex
 from chronex import Out
 from chronex import graph as graphs
 from chronex.cli import main
-from chronex.dot import lineage, to_dot
+from chronex.views.dot import to_dot
+from chronex.views.lineage import lineage
 
 
 @chronex.step

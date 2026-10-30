@@ -179,7 +179,7 @@ def _image(target: Path) -> str | None:
 
 def write_report(graph: Graph, target: Path, output: Path, title: str | None = None) -> Path:
     data = report_data(graph, target, title)
-    template = resources.files("chronex").joinpath("report.html").read_text()
+    template = resources.files("chronex.views").joinpath("report.html").read_text()
     html = template.replace("/*DATA*/null", json.dumps(data, separators=(",", ":")))
     html = html.replace("<title>Lineage</title>", f"<title>{escape(data['title'])}</title>")
     output.parent.mkdir(parents=True, exist_ok=True)

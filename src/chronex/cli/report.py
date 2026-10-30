@@ -23,7 +23,7 @@ from chronex.cli._common import load, roots_argument
 def report(target: str, roots: tuple[str, ...], output: str, title: str | None) -> int:
     """Write a self-contained HTML lineage page for TARGET, e.g. a figure, from records below
     ROOTS (default: .)."""
-    from chronex.report import write_report
+    from chronex.views.report import write_report
 
     graph = load(roots)
     if not graph.producers_of(target):

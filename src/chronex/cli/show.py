@@ -7,7 +7,8 @@ import os
 import rich_click as click
 
 from chronex.cli._common import files, load, roots_argument
-from chronex.dot import lineage, to_dot
+from chronex.views.dot import to_dot
+from chronex.views.lineage import lineage
 
 
 @click.command(
