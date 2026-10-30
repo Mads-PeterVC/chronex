@@ -75,6 +75,9 @@ wheels = [
 name = "chronex"
 version = "0.0.1"
 source = { editable = "." }
+dependencies = [
+    { name = "rich-click" },
+]
 
 [package.optional-dependencies]
 shephex = [
@@ -98,7 +101,10 @@ examples = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "shephex", marker = "extra == 'shephex'" }]
+requires-dist = [
+    { name = "rich-click", specifier = ">=1.9.9" },
+    { name = "shephex", marker = "extra == 'shephex'" },
+]
 provides-extras = ["shephex"]
 
 [package.metadata.requires-dev]

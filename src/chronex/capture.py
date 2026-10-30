@@ -8,6 +8,7 @@ import platform
 import socket
 import subprocess
 import sys
+import warnings
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -155,7 +156,9 @@ def _package_versions() -> dict[str, str]:
     for name, module in list(sys.modules.items()):
         if "." in name or name.startswith("_") or name in sys.stdlib_module_names:
             continue
-        version = getattr(module, "__version__", None)
+        with warnings.catch_warnings():  # e.g. click deprecates its __version__
+            warnings.simplefilter("ignore", DeprecationWarning)
+            version = getattr(module, "__version__", None)
         if isinstance(version, str):
             versions[name] = version
     from chronex import __version__

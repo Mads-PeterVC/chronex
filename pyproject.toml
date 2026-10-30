@@ -7,7 +7,9 @@ authors = [
     { name = "Mads-Peter Verner Christiansen", email = "mpvc@bio.aau.dk" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "rich-click>=1.9.9",
+]
 
 [project.optional-dependencies]
 shephex = ["shephex"]

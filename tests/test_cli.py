@@ -233,3 +233,21 @@ def test_check_names_the_steps_that_keep_an_older_run_current(
     (line,) = [line for line in out.splitlines() if "  use  " in line]
     assert "use has been re-run since [an older run" in line
     assert "still current because peek used its output: re-run or forget peek" in line
+
+
+def test_run_options_take_several_values() -> None:
+    from chronex.cli.run import expand_values
+
+    argv = ["run", "--in", "a", "b", "-q", "--out", "c", "--", "cmd", "--in", "x"]
+    assert expand_values(argv) == [
+        *["run", "--in", "a", "--in", "b", "-q", "--out", "c"],
+        *["--", "cmd", "--in", "x"],
+    ]
+    assert expand_values(["check", "--target", "a", "b"]) == ["check", "--target", "a", "b"]
+
+
+def test_wrong_arguments_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["check", "--no-such-option"]) == 2
+    assert main(["no-such-command"]) == 2
+    assert main(["--help"]) == 0
+    assert "forget" in capsys.readouterr().out
