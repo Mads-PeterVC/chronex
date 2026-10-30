@@ -35,29 +35,53 @@ roots: list[str] = ["."]
 FENCE = "`" * 3
 # Quarto draws every diagram in a 7 by 5 inch box, which shrinks a long lineage; this gives
 # each graph its natural size (Graphviz points, at 96 px per inch), up to the column width.
-# Graphviz puts a tooltip on a link's title attribute, which browsers do not show inside SVG;
-# this turns each into the <title> element they do show, and keeps the links from navigating.
+# Graphviz keeps a tooltip as a link's title attribute, which browsers do not show inside SVG
+# (and native tooltips are slow, and unreliable in Safari): this shows it in a box of its own,
+# at once, beside the pointer.
 SCRIPT = """
 ```{=html}
+<style>
+.chronex-tip { position: fixed; z-index: 1000; display: none; max-width: 480px;
+  padding: 6px 9px; background: #fff; color: #2f343a; border: 1px solid #c7ccd1;
+  border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, .15); pointer-events: none;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.chronex-lineage svg a { cursor: help; }
+</style>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const tip = document.createElement("div");
+  tip.className = "chronex-tip";
+  document.body.append(tip);
+  const place = (event) => {
+    const x = event.clientX + 14, y = event.clientY + 14;
+    tip.style.left = Math.max(4, Math.min(x, innerWidth - tip.offsetWidth - 8)) + "px";
+    tip.style.top = (y + tip.offsetHeight > innerHeight - 8
+      ? Math.max(4, event.clientY - tip.offsetHeight - 10) : y) + "px";
+  };
   document.querySelectorAll(".chronex-lineage svg").forEach((svg) => {
     const box = svg.viewBox.baseVal;
-    if (!box || !box.width) return;
-    svg.setAttribute("width", box.width * 4 / 3);
-    svg.setAttribute("height", box.height * 4 / 3);
-    svg.style.maxWidth = "100%";
-    svg.style.height = "auto";
-    svg.style.display = "block";
-    svg.style.margin = "0 auto";
-  });
-  document.querySelectorAll(".chronex-lineage svg a[title]").forEach((a) => {
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = a.getAttribute("title");
-    a.prepend(title);
-    a.removeAttribute("title");
-    a.removeAttribute("href");
-    a.style.cursor = "default";
+    if (box && box.width) {
+      svg.setAttribute("width", box.width * 4 / 3);
+      svg.setAttribute("height", box.height * 4 / 3);
+      Object.assign(svg.style, { maxWidth: "100%", height: "auto", display: "block",
+        margin: "0 auto" });
+    }
+    svg.querySelectorAll("title").forEach((title) => title.remove());  // node ids
+    const xlink = "http://www.w3.org/1999/xlink";
+    svg.querySelectorAll("a[title], a[*|title]").forEach((a) => {
+      const text = a.getAttribute("title") || a.getAttributeNS(xlink, "title");
+      a.removeAttribute("title");
+      a.removeAttributeNS(xlink, "title");
+      a.removeAttribute("href");
+      a.removeAttributeNS(xlink, "href");
+      a.addEventListener("mouseenter", (event) => {
+        tip.textContent = text.replace(/\u00a0/g, " ");
+        tip.style.display = "block";
+        place(event);
+      });
+      a.addEventListener("mousemove", place);
+      a.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+    });
   });
 });
 </script>
