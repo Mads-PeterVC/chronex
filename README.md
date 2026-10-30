@@ -90,6 +90,30 @@ edited file have been redone, so they are no longer current.
 `chronex report figure.png` writes `lineage.html`, a self-contained page with the figure, every
 step upstream of it, and every flag.
 
+## Figures in Quarto
+
+In a Quarto document, show a figure in a tabset with its provenance: the figure, then its
+lineage drawn as a graph with one node per step (`fit ×3` for three runs). Hover a step for its
+parameters, code version and flags; flagged steps are coloured, and the tab title counts the
+flags.
+
+```python
+import chronex.quarto as cq
+
+cq.figure("results/cv.png", caption="Heat capacity")  # a figure the pipeline wrote
+
+with cq.make_figure("figures/energy.png", caption="Energy") as s:  # one drawn in the cell
+    curves = np.genfromtxt(s.input("results/curves.csv"), delimiter=",", names=True)
+    ...
+    fig.savefig("figures/energy.png")
+```
+
+`make_figure` records the cell as a step, with the document and the cell's code, so its
+figure's lineage joins the pipeline's. Records are searched for below the document's
+directory; set `cq.roots` to look elsewhere. Quarto draws the graphs itself, so Graphviz need
+not be installed. `chronex show FILE --dot` prints the same graph's source. See
+`examples/quarto/`: `uv sync --group examples`, then `quarto render` there.
+
 ## Which markup to use
 
 | Code | Use | Granularity |
@@ -144,7 +168,7 @@ A step is named after its function, its block's name, or its script (`inline` fo
 
 ```
 chronex check [ROOTS…] [--target FILE] [--history] [--strict] [--all] [--json]
-chronex show FILE [ROOTS…]
+chronex show FILE [ROOTS…] [--dot]
 chronex report FILE [ROOTS…] [-o lineage.html]
 chronex run [--name N] [--in PATH…] [--out PATH…] [--watch DIR…] [-q] -- COMMAND…
 chronex forget STEP… [--root DIR] [-n]
