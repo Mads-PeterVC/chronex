@@ -20,6 +20,7 @@ import threading
 import types
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import chronex
 from chronex.record import Step
@@ -89,6 +90,13 @@ def run(
         env["CHRONEX_NAME"] = name
     env["PYTHONPATH"] = os.pathsep.join(p for p in (BOOT, env.get("PYTHONPATH")) if p)
 
+    given = {"--in": inputs, "--out": outputs, "--watch": watch}
+    for option in _misplaced(command, given):
+        print(
+            f"chronex: {option} after -- goes to {command[0]}, not to chronex run; "
+            "put chronex's options before --",
+            file=sys.stderr,
+        )
     before = _snapshot(watch)
     with _forwarding_sigterm() as started:
         try:
@@ -106,10 +114,10 @@ def run(
     # The Python processes recorded themselves; unless files are declared, the command adds
     # nothing to their records, and is not recorded.
     keep = declared or not children
-    names = []
+    recorded = []
     for child in children:
         record = json.loads(Path(child).read_text())
-        names.append(record["name"])
+        recorded.append(record)
         changed = False
         if record["status"] == "running":  # killed before it could finish its record
             record["status"] = "failed"
@@ -131,7 +139,8 @@ def run(
         if wrapper.path is not None:
             wrapper.path.unlink(missing_ok=True)
         if not quiet:
-            print(f"chronex: recorded {', '.join(names)}", file=sys.stderr)
+            for record in recorded:
+                print(_summary(record), file=sys.stderr)
         return _exit_code(returncode)
 
     if not children and not declared:
@@ -157,10 +166,32 @@ def run(
     for entry in wrapper.outputs:
         if entry["kind"] == "missing":
             print(f"chronex: declared output {entry['rel']} was not written", file=sys.stderr)
+    if inputs and not (outputs or watch):
+        print(
+            f"chronex: {wrapper.name} declares no outputs, so no later step can link to it; "
+            "give them with --out or --watch",
+            file=sys.stderr,
+        )
     if not quiet:
-        steps = f" and {', '.join(names)}" if names else ""
-        print(f"chronex: recorded {wrapper.name}{steps} in {record.parent}", file=sys.stderr)
+        for entry in [json.loads(record.read_text()), *recorded]:
+            print(_summary(entry), file=sys.stderr)
     return _exit_code(returncode)
+
+
+def _summary(record: dict[str, Any]) -> str:
+    """One line saying what a step's record holds."""
+    inputs, outputs = record["inputs"], record["outputs"]
+    status = str(record["status"]) + (f": {record['error']}" if record.get("error") else "")
+    files = (
+        f"{len(inputs)} {'input' if len(inputs) == 1 else 'inputs'}, "
+        f"{len(outputs)} {'output' if len(outputs) == 1 else 'outputs'}"
+    )
+    return f"chronex: recorded {record['name']} ({status}; {files})"
+
+
+def _misplaced(command: list[str], given: dict[str, list[str]]) -> list[str]:
+    """chronex run's own options found after ``--``, where they go to the command instead."""
+    return [option for option, values in given.items() if option in command[1:] and not values]
 
 
 def _exit_code(returncode: int) -> int:

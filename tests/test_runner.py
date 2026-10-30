@@ -177,3 +177,38 @@ def test_a_declared_file_that_is_missing_is_reported_at_once(workdir: Path) -> N
     assert result.returncode == 0  # the command's own exit code
     assert "declared input nope.csv did not exist" in result.stderr
     assert "declared output never.txt was not written" in result.stderr
+
+
+def run_capturing(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "chronex.cli", "run", *args],
+        cwd=cwd,
+        env=env_without_chronex(),
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_run_says_what_it_recorded_the_same_way_for_every_command(workdir: Path) -> None:
+    Path("in.txt").write_text("hello")
+    Path("script.py").write_text(SCRIPT)
+    result = run_capturing("--", sys.executable, "script.py", cwd=workdir)
+    assert result.stderr == "chronex: recorded script (completed; 1 input, 1 output)\n"
+    result = run_capturing(
+        "--in", "in.txt", "--out", "copy.txt", "--", "cp", "in.txt", "copy.txt", cwd=workdir
+    )
+    assert result.stderr == "chronex: recorded cp (completed; 1 input, 1 output)\n"
+    result = run_capturing("--out", "x", "--", "sh", "-c", "exit 3", cwd=workdir)
+    assert "chronex: recorded sh (failed: exit code 3; 0 inputs, 1 output)" in result.stderr
+
+
+def test_run_warns_about_its_options_after_the_command(workdir: Path) -> None:
+    Path("in.txt").write_text("hello")
+    result = run_capturing("--", "cat", "in.txt", "--in", "in.txt", cwd=workdir)
+    assert "--in after -- goes to cat, not to chronex run" in result.stderr
+
+
+def test_run_warns_when_only_inputs_are_declared(workdir: Path) -> None:
+    Path("in.txt").write_text("hello")
+    result = run_capturing("--in", "in.txt", "--", "cat", "in.txt", cwd=workdir)
+    assert "cat declares no outputs" in result.stderr
