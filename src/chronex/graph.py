@@ -67,6 +67,7 @@ class Graph:
     # Who wrote each content (sha) and each (host, path): how inputs and files are resolved.
     produced: dict[str, list[tuple[Record, str]]] = field(default_factory=dict)
     writers: dict[tuple[str, str], list[tuple[Record, str]]] = field(default_factory=dict)
+    _redone: set[str] | None = field(default=None, repr=False)
 
     def ancestry(self, step_id: str) -> set[str]:
         seen: set[str] = set()
@@ -86,6 +87,8 @@ class Graph:
         again later on the same host. A step that wrote nothing is redone by a later run with
         the same name, parameters and directory.
         """
+        if self._redone is not None:
+            return self._redone
         writes: dict[tuple[str, str], list[str]] = defaultdict(list)
         runs: dict[tuple[Any, ...], list[str]] = defaultdict(list)
         for r in self.records.values():
@@ -103,7 +106,8 @@ class Graph:
             key = (r["name"], r["cwd"], _host(r), json.dumps(r["params"], sort_keys=True))
             return any(t > _end(r) for t in runs[key])
 
-        return {sid for sid, r in self.records.items() if redone(r)}
+        self._redone = {sid for sid, r in self.records.items() if redone(r)}
+        return self._redone
 
     def current(self) -> set[str]:
         """Steps that still matter: those not redone by a later run, and their ancestry."""
