@@ -117,7 +117,7 @@ def _show(args: argparse.Namespace) -> int:
     producers = graph.producers_of(args.path)
     if not producers:
         print(graph.why_unknown(args.path))
-        return 1
+        return 2
     seen: set[str] = set()
 
     def show(sid: str, depth: int) -> None:
@@ -159,6 +159,9 @@ def _report(args: argparse.Namespace) -> int:
     from chronex.report import write_report
 
     graph = graphs.build(graphs.load(*args.roots))
+    if not graph.producers_of(args.target):
+        print(f"chronex report: {graph.why_unknown(args.target)}", file=sys.stderr)
+        return 2
     out = write_report(graph, Path(args.target), Path(args.output), title=args.title)
     print(f"wrote {out}")
     return 0
@@ -253,7 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser(
         "check",
         help="link the records below ROOTS and report problems",
-        description="Exit code: 1 if an error is found (or a warning, with --strict), else 0.",
+        description="Exit code: 1 if an error is found (or a warning, with --strict), 2 if a "
+        "--target has no recorded lineage, else 0.",
     )
     _roots(p)
     p.add_argument("--target", action="append", help="only the lineage of this file (repeatable)")
@@ -263,12 +267,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_check)
 
-    p = sub.add_parser("show", help="print the upstream lineage of a file")
+    p = sub.add_parser(
+        "show",
+        help="print the upstream lineage of a file",
+        description="Exit code: 2 if no recorded step wrote the file, else 0.",
+    )
     p.add_argument("path")
     _roots(p)
     p.set_defaults(func=_show)
 
-    p = sub.add_parser("report", help="write a self-contained HTML lineage page for a file")
+    p = sub.add_parser(
+        "report",
+        help="write a self-contained HTML lineage page for a file",
+        description="Exit code: 2 if no recorded step wrote the file, else 0.",
+    )
     p.add_argument("target", help="the result to explain, e.g. a figure")
     _roots(p)
     p.add_argument("-o", "--output", default="lineage.html")

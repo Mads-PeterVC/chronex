@@ -122,12 +122,12 @@ def test_show_explains_why_a_file_has_no_lineage(
     make(Path("c"), "v1")
     Path("c").write_text("edited")
     Path("loose").write_text("x")
-    assert show("nope", capsys) == (1, "nope does not exist\n")
-    assert show("raw", capsys) == (1, "no recorded step wrote raw; it is an origin input of use\n")
+    assert show("nope", capsys) == (2, "nope does not exist\n")
+    assert show("raw", capsys) == (2, "no recorded step wrote raw; it is an origin input of use\n")
     code, out = show("c", capsys)
-    assert code == 1 and out.startswith("c was written by make at ")
+    assert code == 2 and out.startswith("c was written by make at ")
     assert out.endswith("UTC, but has changed since\n")
-    assert show("loose", capsys) == (1, "no recorded step wrote or read loose\n")
+    assert show("loose", capsys) == (2, "no recorded step wrote or read loose\n")
 
 
 def test_report_embeds_the_figure_and_lists_hidden_reads(
@@ -145,6 +145,8 @@ def test_report_embeds_the_figure_and_lists_hidden_reads(
     assert data["image"].startswith("data:image/png;base64,")
     (act,) = data["acts"].values()
     assert act["undeclared_reads"] == ["config.json"]
+    assert main(["report", "config.json"]) == 2
+    assert check("--target", "config.json", capsys=capsys)[0] == 2
 
 
 def test_an_identical_rerun_replaces_the_old_lineage(
@@ -169,7 +171,7 @@ def test_content_written_elsewhere_is_not_a_files_lineage(
     make(Path("count.txt"), "123")
     Path("tiny_out.txt").write_text("123")
     code, out = show("tiny_out.txt", capsys)
-    assert code == 1
+    assert code == 2
     assert out == "tiny_out.txt has the same content as an output of make, too little to link\n"
 
 

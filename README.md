@@ -154,9 +154,12 @@ chronex forget STEP… [--root DIR] [-n]
 directory above when the steps ran in several places. `show`, `report` and `--target` find a
 file's producer the way inputs are linked: the latest step that wrote that path, or the
 source of a copy. `--in`, `--out` and `--watch` take one or more paths; end them with `--`
-before the command. `check`
-exits 1 if it finds an error, or a warning with `--strict`, and 0 otherwise, so it can gate a
-pipeline or an agent's work. `--target FILE` checks only that file's lineage.
+before the command. `--target FILE` checks only that file's lineage.
+
+Exit codes: `check` exits 1 if it finds an error, or a warning with `--strict`, so it can gate a
+pipeline or an agent's work. `check --target`, `show` and `report` exit 2 when no recorded
+step wrote the file, as does any command given wrong arguments. Otherwise they exit 0.
+`chronex run` exits with its command's code.
 
 `forget` retires steps that should not count, such as a failed experiment or a mistaken
 command: give a name, or the 8-character id `check` prints. Their records (and those of steps
