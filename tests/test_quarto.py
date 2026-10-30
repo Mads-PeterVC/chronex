@@ -33,15 +33,17 @@ def test_a_figure_comes_with_its_lineage(workdir: Path, capsys: pytest.CaptureFi
     assert "<script>" not in cq.markdown("figure.png")  # once per document
 
 
-def test_flags_are_counted_in_the_tab(workdir: Path) -> None:
+def test_flags_are_counted_in_the_tab_and_listed(workdir: Path) -> None:
     plot()
-    Path("hidden").write_text("x")
+    Path("my_hidden*").write_text("x")
     with chronex.step("plot") as s:
-        Path("hidden").read_text()
+        Path("my_hidden*").read_text()
         Path(s.output("figure.png")).write_bytes(Path(s.input("data.csv")).read_bytes())
     text = cq.markdown("figure.png")
     assert "\n## Provenance ⚠ 1\n" in text
     assert "**1 warning** · 1 step" in text
+    assert "\n\n- **warning** `undeclared-read` in plot: " in text
+    assert "my\\_hidden\\*" in text  # shown as is, not as emphasis
 
 
 def test_a_figure_without_lineage_says_why(workdir: Path) -> None:

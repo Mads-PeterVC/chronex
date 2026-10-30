@@ -94,8 +94,8 @@ step upstream of it, and every flag.
 
 In a Quarto document, show a figure in a tabset with its provenance: the figure, then its
 lineage drawn as a graph with one node per step (`fit ×3` for three runs). Hover a step for its
-parameters, code version and flags; flagged steps are coloured, and the tab title counts the
-flags.
+parameters and code version. Flagged steps are coloured, the flags are listed under the graph,
+and the tab title counts them.
 
 ```python
 import chronex.quarto as cq

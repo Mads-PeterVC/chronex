@@ -12,12 +12,14 @@ In a Python cell:
         plt.savefig("figures/residuals.png")
 
 The provenance tab draws the figure's lineage with Graphviz (one node per step; hover a step for
-its parameters, code version and flags). Quarto renders it; no Graphviz install is needed.
+its parameters and code version), and lists its flags. Quarto renders it; no Graphviz install
+is needed.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,6 +35,7 @@ from chronex.record import Step
 roots: list[str] = ["."]
 
 FENCE = "`" * 3
+MAX_FLAGS = 12  # listed under a graph; the rest are counted
 # Quarto draws every diagram in a 7 by 5 inch box, which shrinks a long lineage; this gives
 # each graph its natural size (Graphviz points, at 96 px per inch), up to the column width.
 # Graphviz keeps a tooltip as a link's title attribute, which browsers do not show inside SVG
@@ -156,6 +159,7 @@ def markdown(
                 ":::",
                 "",
                 summary(found),
+                *flag_list(found),
             ]
         )
     parts = ["::: {.panel-tabset}", "", "## Figure", "", image, "", f"## {tab}", "", body, ""]
@@ -184,7 +188,29 @@ def summary(found: Lineage) -> str:
     parts.append(f"{len(origins)} origin {'file' if len(origins) == 1 else 'files'}")
     if found.commits:
         parts.append("code " + ", ".join(f"`{c}`" for c in sorted(found.commits)))
-    return " · ".join(parts) + ". Hover a step for its parameters, code and flags."
+    return " · ".join(parts) + ". Hover a step for its parameters and code."
+
+
+def flag_list(found: Lineage) -> list[str]:
+    """The flags as a list, errors first, then by step: what the colours stand for."""
+    entries = sorted(
+        (level != "error", name, code, text)
+        for name, flags in found.flags.items()
+        for level, code, text in flags
+    )
+    lines = [
+        f"- **{'warning' if warn else 'error'}** `{code}` in {_escape(name)}: {_escape(text)}"
+        for warn, name, code, text in entries[:MAX_FLAGS]
+    ]
+    if len(entries) > MAX_FLAGS:
+        more = len(entries) - MAX_FLAGS
+        lines.append(f"- and {more} more: `chronex check --target {found.target}`")
+    return ["", *lines] if lines else []
+
+
+def _escape(text: str) -> str:
+    """Text shown as is in markdown: paths hold underscores and asterisks."""
+    return re.sub(r"([\\`*_\[\]<>#|~])", r"\\\1", text)
 
 
 def _display(text: str) -> None:
